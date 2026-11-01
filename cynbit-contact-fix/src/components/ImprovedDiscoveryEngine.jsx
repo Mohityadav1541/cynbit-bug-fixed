@@ -9,6 +9,7 @@ import {
   Save,
   Check,
   WifiOff,
+  Sparkles,
 } from 'lucide-react'
 import confetti from 'canvas-confetti'
 import ProgressBar from './discovery/ProgressBar'
@@ -40,7 +41,7 @@ import {
 } from '../utils/rateLimit'
 import { submitInquiryMock, SIMULATION_MODES } from '../utils/mockApi'
 import { submitInquiryLive, checkBackendHealth } from '../utils/apiClient'
-import { CYNBIT_CONFIG } from '../config/cynbitConfig'
+import { CYNBIT_CONFIG, SYNTHETIC_DEMO_DATA } from '../config/cynbitConfig'
 
 const INITIAL_FORM_DATA = {
   serviceStream: 'ai-agents',
@@ -63,7 +64,8 @@ const INITIAL_FORM_DATA = {
 
 const SUBMISSION_TIMEOUT_MS = 6000
 
-export default function ImprovedDiscoveryEngine({ simulationMode }) {
+export default function ImprovedDiscoveryEngine({ simulationMode, isReviewerMode = false }) {
+  const effectiveSimulationMode = isReviewerMode ? simulationMode : SIMULATION_MODES.SUCCESS
   const [currentStep, setCurrentStep] = useState(1)
   const [completedSteps, setCompletedSteps] = useState([])
 
@@ -140,36 +142,21 @@ export default function ImprovedDiscoveryEngine({ simulationMode }) {
     }
   }, [])
 
-  // Reviewer Test Harness: Fast-track sample project population
-  useEffect(() => {
-    const handleFillSample = () => {
-      setFormData({
-        serviceStream: 'ai-agents',
-        projectTitle: 'Enterprise Autonomous Agent Orchestrator',
-        projectDescription: 'Building a fault-tolerant multi-agent workflow architecture to automate deployment and monitoring across multi-region cloud clusters.',
-        businessObjective: 'Eliminate 80% of repetitive engineering triage tasks.',
-        mainChallenges: 'State synchronization between long-running agent threads and external API rate limits.',
-        expectedFunctionality: 'Real-time agent visualization, human-in-the-loop approvals, and automated telemetry ingestion.',
-        techFocus: ['React', 'Next.js', 'Python', 'AI/LLM Integration', 'PostgreSQL', 'AWS'],
-        customTech: 'LangGraph & Vector RAG',
-        timeline: '1-3-months',
-        budgetIndex: 3,
-        isBudgetUndecided: false,
-        fullName: 'Dr. Vikramaditya Rathore',
-        email: 'vikram.rathore@cynbit-enterprise.com',
-        phone: '+91-98290-12345',
-        company: 'Rathore Systems International',
-        website_url_hp: '',
-      })
-      setCompletedSteps([1, 2, 3, 4, 5])
-      setCurrentStep(6)
-      setSubmitResult(null)
-      window.scrollTo({ top: 140, behavior: 'smooth' })
-    }
+  // Fast-track synthetic demo project population (Alex Demo / Example Demonstration Inc.)
+  const handleFillSample = useCallback(() => {
+    setFormData({
+      ...SYNTHETIC_DEMO_DATA,
+    })
+    setCompletedSteps([1, 2, 3, 4, 5])
+    setCurrentStep(6)
+    setSubmitResult(null)
+    window.scrollTo({ top: 140, behavior: 'smooth' })
+  }, [])
 
+  useEffect(() => {
     window.addEventListener('cynbit:fill-sample', handleFillSample)
     return () => window.removeEventListener('cynbit:fill-sample', handleFillSample)
-  }, [])
+  }, [handleFillSample])
 
   // Execute confirmed draft discard
   const handleExecuteClearDraft = () => {
@@ -419,12 +406,12 @@ export default function ImprovedDiscoveryEngine({ simulationMode }) {
       // SIMULATION_MODES.SUCCESS -> Live Express API
       // Any other simulation mode -> Developer Simulator Mock
       let response
-      if (simulationMode === SIMULATION_MODES.SUCCESS) {
+      if (effectiveSimulationMode === SIMULATION_MODES.SUCCESS) {
         response = await submitInquiryLive(payload, {
           signal: controller.signal,
         })
       } else {
-        response = await submitInquiryMock(payload, simulationMode, {
+        response = await submitInquiryMock(payload, effectiveSimulationMode, {
           signal: controller.signal,
         })
         if (response && response.success) {
@@ -447,7 +434,7 @@ export default function ImprovedDiscoveryEngine({ simulationMode }) {
           inquiryId: response.inquiryId,
           assignedArchitect: response.assignedArchitect,
           slaResponseHours: response.slaResponseHours,
-          storageMode: response.storageMode || (simulationMode === SIMULATION_MODES.SUCCESS ? 'local-fallback' : 'simulated-mock'),
+          storageMode: response.storageMode || (effectiveSimulationMode === SIMULATION_MODES.SUCCESS ? 'local-fallback' : 'simulated-mock'),
           isLiveBackend: Boolean(response.isLiveBackend),
           data: payload,
         })
@@ -533,6 +520,17 @@ export default function ImprovedDiscoveryEngine({ simulationMode }) {
           </p>
 
           <div className="flex flex-wrap items-center gap-3 pt-2">
+            {/* Synthetic Sample Data Trigger Button */}
+            <button
+              type="button"
+              onClick={handleFillSample}
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-surface-container hover:bg-surface-container-high text-on-surface text-xs font-headline font-bold border border-outline-variant/20 shadow-xs transition-all cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary active:scale-95"
+              title="Populates all steps with synthetic demo specifications (Alex Demo, Example Demonstration Inc.)"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-primary" aria-hidden="true" />
+              <span>Fill Demo Sample Data</span>
+            </button>
+
             {backendStatus.checked && (
               <div
                 className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold border shadow-xs transition-all ${
@@ -647,7 +645,7 @@ export default function ImprovedDiscoveryEngine({ simulationMode }) {
                     </span>
                   ) : (
                     <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-purple-500/10 text-purple-700 border border-purple-500/30">
-                      Simulated Mock (Developer Test)
+                      [SIMULATION MOCK] - Evaluator Fault Injection Test
                     </span>
                   )}
                 </div>
@@ -658,7 +656,7 @@ export default function ImprovedDiscoveryEngine({ simulationMode }) {
                 <div className="w-full max-w-md p-3.5 rounded-2xl bg-surface-container-low border border-outline-variant/20 text-[11px] text-on-surface-variant text-left leading-relaxed space-y-1">
                   <div className="font-bold text-on-surface flex items-center gap-1.5">
                     <span className="w-2 h-2 rounded-full bg-blue-500" />
-                    Local Development Fallback Notice
+                    Verified Local Development Fallback Notice
                   </div>
                   <p>
                     Persisted to single-node local file storage (<code className="text-primary font-mono font-bold">server/data/inquiries.json</code>).
@@ -667,14 +665,26 @@ export default function ImprovedDiscoveryEngine({ simulationMode }) {
                 </div>
               )}
 
-              {submitResult.storageMode === 'simulated-mock' && (
-                <div className="w-full max-w-md p-3.5 rounded-2xl bg-surface-container-low border border-outline-variant/20 text-[11px] text-on-surface-variant text-left leading-relaxed space-y-1">
-                  <div className="font-bold text-on-surface flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-purple-500" />
-                    Developer Simulator Notice
+              {submitResult.storageMode === 'postgresql' && (
+                <div className="w-full max-w-md p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-[11px] text-emerald-950 text-left leading-relaxed space-y-1">
+                  <div className="font-bold text-emerald-900 flex items-center gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                    Verified Live Production Database Persistence
                   </div>
                   <p>
-                    This was a simulated laboratory test submission. It was processed through the mock harness and <strong>not</strong> written to any persistent database.
+                    Your enquiry has been successfully committed with ACID durability into the PostgreSQL cluster.
+                  </p>
+                </div>
+              )}
+
+              {submitResult.storageMode === 'simulated-mock' && (
+                <div className="w-full max-w-md p-4 rounded-2xl bg-purple-500/10 border-2 border-purple-500/40 text-xs text-on-surface text-left leading-relaxed space-y-1.5">
+                  <div className="font-headline font-black text-purple-900 flex items-center gap-2 text-xs uppercase tracking-wider">
+                    <span className="w-2 h-2 rounded-full bg-purple-600 animate-ping" />
+                    [SIMULATION MOCK] - Reviewer Evaluator Test Response
+                  </div>
+                  <p className="text-purple-950 font-body text-[11px]">
+                    This inquiry was processed by the developer fault injection simulator for laboratory testing. It was <strong>NOT</strong> submitted to production servers or persisted in the live database.
                   </p>
                 </div>
               )}

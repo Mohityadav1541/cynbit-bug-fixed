@@ -112,7 +112,7 @@ describe('=== COMPREHENSIVE QA TEST SUITE: CYNBIT DISCOVERY ENGINE ===', () => {
       assert.match(testPrefixRes.error, /real business email/i)
 
       // Valid enterprise corporate email
-      const validRes = validateEmail('vikram.rathore@cynbit-enterprise.com')
+      const validRes = validateEmail('alex@example.com')
       assert.equal(validRes.valid, true)
       assert.equal(validRes.error, null)
     })
@@ -133,10 +133,10 @@ describe('=== COMPREHENSIVE QA TEST SUITE: CYNBIT DISCOVERY ENGINE ===', () => {
 
     test('1.4 Valid Form Submission: passes validation when all mandatory fields are well-formed', () => {
       const validForm = {
-        fullName: 'Vikramaditya Rathore',
-        email: 'vikram.rathore@cynbit.in',
+        fullName: 'Alex Demo',
+        email: 'alex@example.com',
         phone: '+91-98290-12345',
-        company: 'Rathore Technologies Jaipur',
+        company: 'Example Demonstration Inc.',
         projectTitle: 'Autonomous Claims AI Engine',
         projectDescription: 'Building a multi-agent architectural blueprint for instant claim triage and policy verification.',
       }
@@ -250,8 +250,8 @@ describe('=== COMPREHENSIVE QA TEST SUITE: CYNBIT DISCOVERY ENGINE ===', () => {
         timeline: '1-3-months',
         isBudgetUndecided: true,
         budgetIndex: 3,
-        fullName: 'Vikram',
-        email: 'vikram@cynbit.in',
+        fullName: 'Alex Demo',
+        email: 'alex@example.com',
       })
       assert.match(brief, /Investment Bracket:\s*Undecided/i)
     })
@@ -268,8 +268,8 @@ describe('=== COMPREHENSIVE QA TEST SUITE: CYNBIT DISCOVERY ENGINE ===', () => {
       techFocus: ['Python', 'PostgreSQL'],
       timeline: '1-3-months',
       budgetIndex: 2,
-      fullName: 'Vikramaditya Rathore',
-      email: 'vikram.rathore@cynbit.in',
+      fullName: 'Alex Demo',
+      email: 'alex@example.com',
       phone: '+91-98290-12345',
       website_url_hp: '',
     }
@@ -307,7 +307,7 @@ describe('=== COMPREHENSIVE QA TEST SUITE: CYNBIT DISCOVERY ENGINE ===', () => {
       assert.equal(submitResult.errorType, 'NETWORK_ERROR')
       // Original form payload remains intact
       assert.equal(testPayload.projectTitle, 'Autonomous Claims AI Engine')
-      assert.equal(testPayload.email, 'vikram.rathore@cynbit.in')
+      assert.equal(testPayload.email, 'alex@example.com')
     })
 
     test('2.3 Offline Mode: aborts submission before network call when navigator.onLine is false', () => {
@@ -466,10 +466,10 @@ describe('=== COMPREHENSIVE QA TEST SUITE: CYNBIT DISCOVERY ENGINE ===', () => {
         budgetIndex: 3,
         isBudgetUndecided: false,
         // PII fields:
-        fullName: 'Dr. Vikramaditya Rathore',
-        email: 'vikram.rathore@cynbit.in',
+        fullName: 'Alex Demo',
+        email: 'alex@example.com',
         phone: '+91-98290-12345',
-        company: 'Rathore Systems',
+        company: 'Example Demonstration Inc.',
         website_url_hp: '',
       }
 
@@ -813,18 +813,18 @@ describe('=== COMPREHENSIVE QA TEST SUITE: CYNBIT DISCOVERY ENGINE ===', () => {
         timeline: '1-3-months',
         budgetIndex: 3,
         isBudgetUndecided: false,
-        fullName: 'Dr. Vikramaditya Rathore',
-        email: 'vikram.rathore@cynbit.in',
+        fullName: 'Alex Demo',
+        email: 'alex@example.com',
         phone: '+91-98290-12345',
-        company: 'Rathore Systems',
+        company: 'Example Demonstration Inc.',
       }
 
       const plainBrief = generatePlainBrief(sample)
       assert.match(plainBrief, /CYNBIT ARCHITECTURE DISCOVERY BRIEF/i)
       assert.match(plainBrief, /Autonomous Claims AI Engine/)
       assert.match(plainBrief, /Python, PostgreSQL, Docker, Other: LangGraph/)
-      assert.match(plainBrief, /Dr\. Vikramaditya Rathore/)
-      assert.match(plainBrief, /vikram\.rathore@cynbit\.in/)
+      assert.match(plainBrief, /Alex Demo/)
+      assert.match(plainBrief, /alex@example\.com/)
       assert.match(plainBrief, /\+91-98290-12345/)
 
       // WhatsApp URL

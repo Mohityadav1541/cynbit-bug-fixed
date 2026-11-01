@@ -58,7 +58,7 @@ export default function Step5Contact({ formData, errors, touched, onChange, onBl
               aria-required="true"
               aria-invalid={isNameInvalid ? 'true' : 'false'}
               aria-describedby={`desc-fullName ${isNameInvalid ? 'error-fullName' : ''}`.trim()}
-              placeholder="e.g. Alex Rivera"
+              placeholder="e.g. Alex Demo"
               className={`w-full bg-surface-container-low border rounded-2xl px-6 py-4 text-sm font-medium text-on-surface placeholder:text-on-surface-variant/40 focus:outline-none focus:bg-white transition-all focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 ${
                 isNameInvalid
                   ? 'border-error focus:ring-2 focus:ring-error/20'
@@ -114,7 +114,7 @@ export default function Step5Contact({ formData, errors, touched, onChange, onBl
               aria-required="true"
               aria-invalid={isEmailInvalid ? 'true' : 'false'}
               aria-describedby={`desc-email ${isEmailInvalid ? 'error-email' : ''}`.trim()}
-              placeholder="alex@company.com"
+              placeholder="alex@example.com"
               className={`w-full bg-surface-container-low border rounded-2xl px-6 py-4 text-sm font-medium text-on-surface placeholder:text-on-surface-variant/40 focus:outline-none focus:bg-white transition-all focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 ${
                 isEmailInvalid
                   ? 'border-error focus:ring-2 focus:ring-error/20'
@@ -209,7 +209,7 @@ export default function Step5Contact({ formData, errors, touched, onChange, onBl
               value={formData.company}
               onChange={onChange}
               onBlur={onBlur}
-              placeholder="Your Organization"
+              placeholder="e.g. Example Demonstration Inc."
               className="w-full bg-surface-container-low border border-outline-variant/15 rounded-2xl px-6 py-4 text-sm font-medium text-on-surface placeholder:text-on-surface-variant/40 focus:outline-none focus:border-primary focus:bg-white transition-all focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
             />
           </div>

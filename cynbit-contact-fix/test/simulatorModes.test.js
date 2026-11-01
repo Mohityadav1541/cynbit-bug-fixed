@@ -6,8 +6,8 @@ const SAMPLE_PAYLOAD = {
   serviceStream: 'ai-agents',
   projectTitle: 'Autonomous Logistics Orchestrator',
   projectDescription: 'Enterprise AI multi-agent dispatch system across logistics hubs.',
-  fullName: 'Dr. Vikramaditya Rathore',
-  email: 'vikram.rathore@cynbit-enterprise.com',
+  fullName: 'Alex Demo',
+  email: 'alex@example.com',
   website_url_hp: '',
 }
 

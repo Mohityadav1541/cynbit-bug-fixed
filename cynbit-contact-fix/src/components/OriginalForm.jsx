@@ -388,7 +388,7 @@ export default function OriginalForm({ simulationMode, onOpenCodeDiff }) {
                 </label>
                 <input
                   type="text"
-                  defaultValue="Alex Rivera"
+                  defaultValue="Alex Demo"
                   disabled={activePattern === 'original' ? originalLoading : improvedLoading}
                   className="w-full px-4 py-3 rounded-2xl bg-surface-container-low border border-outline-variant/20 text-xs font-body text-on-surface focus:outline-none focus:border-primary disabled:opacity-50"
                 />
@@ -400,7 +400,7 @@ export default function OriginalForm({ simulationMode, onOpenCodeDiff }) {
                 </label>
                 <input
                   type="email"
-                  defaultValue="alex@enterprise.io"
+                  defaultValue="alex@example.com"
                   disabled={activePattern === 'original' ? originalLoading : improvedLoading}
                   className="w-full px-4 py-3 rounded-2xl bg-surface-container-low border border-outline-variant/20 text-xs font-body text-on-surface focus:outline-none focus:border-primary disabled:opacity-50"
                 />

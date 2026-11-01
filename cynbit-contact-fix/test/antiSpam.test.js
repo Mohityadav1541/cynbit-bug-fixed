@@ -167,8 +167,8 @@ test('8. Normal Clean User Flow: complete valid inquiry succeeds with HTTP 200',
     serviceStream: 'ai-agents',
     projectTitle: 'Autonomous Logistics Planner',
     projectDescription: 'Multi-agent system dispatching truck fleets across state hubs.',
-    fullName: 'Vikramaditya Rathore',
-    email: 'vikram@logistics-india.in',
+    fullName: 'Alex Demo',
+    email: 'alex@example.com',
     website_url_hp: '', // Clean honeypot
   }
 

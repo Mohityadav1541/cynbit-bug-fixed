@@ -159,10 +159,10 @@ export default function SimulatorBar({ currentMode, onChangeMode }) {
               type="button"
               onClick={handleTriggerSample}
               className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-primary-fixed text-on-primary-fixed font-headline font-bold text-[11px] hover:bg-primary-fixed/80 active:scale-95 transition-all shadow-xs cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-              title="Populates all 6 steps with valid data and jumps straight to Step 6 Review for rapid testing"
+              title="Populates all 6 steps with Alex Demo synthetic data and jumps straight to Step 6 Review for rapid testing"
             >
               <Sparkles className="w-3 h-3 text-primary shrink-0" aria-hidden="true" />
-              <span>Auto-Fill Sample Project &rarr; Review</span>
+              <span>Auto-Fill Demo Project (Alex Demo) &rarr; Review</span>
             </button>
 
             {/* Reset 3/hr rate limit */}
