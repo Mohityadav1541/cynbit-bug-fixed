@@ -13,6 +13,7 @@
 
 export const DRAFT_STORAGE_KEY = 'cynbit_architecture_discovery_draft_v2'
 export const DRAFT_SCHEMA_VERSION = 2
+export const DRAFT_TTL_MS = 14 * 24 * 60 * 60 * 1000 // 14-day retention policy for scoping drafts
 
 // Permitted engagement stream identifiers
 const VALID_STREAMS = ['ai-agents', 'fullstack-architecture', 'cloud-infra', 'bitelevate']
@@ -138,12 +139,13 @@ export function saveScopingDraft(formData, storage) {
 
 /**
  * Reads, verifies, and sanitizes saved scoping draft from LocalStorage.
- * Treats LocalStorage as untrusted input: validates schema version and field structure.
+ * Treats LocalStorage as untrusted input: validates schema version, expiration TTL, and field structure.
  *
  * @param {Storage} [storage] - Storage provider
- * @returns {{ exists: boolean, valid: boolean, scoping?: object, updatedAt?: string, error?: string }}
+ * @param {number} [ttlMs=DRAFT_TTL_MS] - Maximum draft age before automatic expiration (default: 14 days)
+ * @returns {{ exists: boolean, valid: boolean, scoping?: object, updatedAt?: string, expired?: boolean, error?: string }}
  */
-export function loadScopingDraft(storage) {
+export function loadScopingDraft(storage, ttlMs = DRAFT_TTL_MS) {
   const s = storage || (typeof window !== 'undefined' ? window.localStorage : null)
   if (!isStorageAvailable(s)) {
     return { exists: false, valid: false, error: 'LocalStorage is unavailable.' }
@@ -179,6 +181,22 @@ export function loadScopingDraft(storage) {
       exists: true,
       valid: false,
       error: `Draft schema mismatch: found version ${parsed.version}, expected version ${DRAFT_SCHEMA_VERSION}.`,
+    }
+  }
+
+  // Expiration Check: verify TTL retention limit (default: 14 days)
+  if (parsed.updatedAt) {
+    const draftTime = new Date(parsed.updatedAt).getTime()
+    const now = Date.now()
+    if (isNaN(draftTime) || now - draftTime > ttlMs) {
+      // Draft has expired — clean up storage safely and return expired state
+      clearScopingDraft(s)
+      return {
+        exists: false,
+        valid: false,
+        expired: true,
+        error: 'Draft has expired past the retention policy window and was automatically cleared.',
+      }
     }
   }
 

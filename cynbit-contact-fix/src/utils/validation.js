@@ -139,17 +139,70 @@ export function validateMessage(value) {
 }
 
 /**
- * Sanitize input to prevent XSS
+ * Normalizes and sanitizes user input for plain-text storage and presentation.
+ *
+ * NOTE ON SAFE RENDERING:
+ * React JSX text nodes ({value}) automatically and safely escape all HTML entities
+ * by default in the browser DOM. Therefore, we do NOT unnecessarily HTML-escape plain
+ * text data before storing or transmitting it, which would corrupt quotes, ampersands,
+ * slashes, and mathematical operators.
+ *
+ * This function:
+ * - Ensures string type safety.
+ * - Strips non-printable and dangerous control characters while preserving valid newlines/tabs.
+ * - Normalizes Unicode to NFC.
+ * - Normalizes line endings (\r\n -> \n).
+ * - Enforces length limits.
+ * - Trims leading and trailing whitespace.
+ *
+ * @param {any} value - Input value
+ * @param {number} [maxLength=5000] - Optional maximum string length
+ * @returns {string} Clean, normalized plain-text string
  */
-export function sanitizeInput(value) {
+export function sanitizeInput(value, maxLength = 5000) {
+  if (typeof value !== 'string') return ''
+
+  // 1. Strip non-printable ASCII control characters (keep \t=0x09, \n=0x0A, \r=0x0D)
+  // eslint-disable-next-line no-control-regex
+  let cleaned = value.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '')
+
+  // 2. Normalize Unicode representations (NFC canonical composition)
+  try {
+    cleaned = cleaned.normalize('NFC')
+  } catch {
+    // fallback if normalize is unsupported
+  }
+
+  // 3. Normalize newline sequences
+  cleaned = cleaned.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+
+  // 4. Trim leading and trailing whitespace
+  cleaned = cleaned.trim()
+
+  // 5. Enforce length limit
+  if (typeof maxLength === 'number' && maxLength > 0 && cleaned.length > maxLength) {
+    cleaned = cleaned.slice(0, maxLength)
+  }
+
+  return cleaned
+}
+
+/**
+ * Context-aware HTML escaper for rare cases where text must explicitly be embedded
+ * directly in raw HTML markup strings.
+ * (Never use dangerouslySetInnerHTML for untrusted user input).
+ *
+ * @param {string} value
+ * @returns {string} HTML-escaped string
+ */
+export function escapeHtml(value) {
   if (typeof value !== 'string') return ''
   return value
+    .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#x27;')
-    .replace(/\//g, '&#x2F;')
-    .trim()
 }
 
 /**

@@ -380,25 +380,26 @@ export default function ImprovedDiscoveryEngine({ simulationMode, isReviewerMode
       }
       const resolvedStream = streamTitles[formData.serviceStream] || formData.serviceStream || 'Full-Stack Architecture'
 
+      // Sanitize all textual inputs before submission (plain-text normalization with length bounds)
       const payload = {
         engagementStream: resolvedStream,
         serviceStream: formData.serviceStream,
-        projectTitle: sanitizeInput(formData.projectTitle),
-        projectDescription: sanitizeInput(formData.projectDescription),
-        businessObjective: sanitizeInput(formData.businessObjective),
-        mainChallenges: sanitizeInput(formData.mainChallenges),
-        expectedFunctionality: sanitizeInput(formData.expectedFunctionality),
+        projectTitle: sanitizeInput(formData.projectTitle, 150),
+        projectDescription: sanitizeInput(formData.projectDescription, 5000),
+        businessObjective: sanitizeInput(formData.businessObjective, 2000),
+        mainChallenges: sanitizeInput(formData.mainChallenges, 2000),
+        expectedFunctionality: sanitizeInput(formData.expectedFunctionality, 2000),
         techStack: formData.techFocus || [],
         techFocus: formData.techFocus,
-        customTech: sanitizeInput(formData.customTech),
+        customTech: sanitizeInput(formData.customTech, 150),
         timeline: formData.timeline,
         budgetRange: formData.isBudgetUndecided ? 'Undecided' : `Tier ${formData.budgetIndex}`,
         budgetBracket: formData.isBudgetUndecided ? 'Undecided' : formData.budgetIndex,
-        fullName: sanitizeInput(formData.fullName),
-        email: formData.email.trim().toLowerCase(),
-        phone: sanitizeInput(formData.phone),
-        company: sanitizeInput(formData.company),
-        website_url_hp: sanitizeInput(formData.website_url_hp),
+        fullName: sanitizeInput(formData.fullName, 100),
+        email: sanitizeInput(formData.email, 150).toLowerCase(),
+        phone: sanitizeInput(formData.phone, 30),
+        company: sanitizeInput(formData.company, 100),
+        website_url_hp: sanitizeInput(formData.website_url_hp, 200),
         timestamp: new Date().toISOString(),
       }
 
@@ -416,6 +417,7 @@ export default function ImprovedDiscoveryEngine({ simulationMode, isReviewerMode
         })
         if (response && response.success) {
           response.storageMode = 'simulated-mock'
+          response.isLiveBackend = false
         }
       }
 
@@ -425,6 +427,12 @@ export default function ImprovedDiscoveryEngine({ simulationMode, isReviewerMode
       }
 
       if (response.success) {
+        // Enforce: Never report mock success as database success
+        const isLive = Boolean(response.isLiveBackend && effectiveSimulationMode === SIMULATION_MODES.SUCCESS)
+        const verifiedStorageMode = isLive
+          ? (response.storageMode || 'local-fallback')
+          : 'simulated-mock'
+
         // Success path: set lock, clear storage, record submission, celebrate
         hasSubmittedSuccessfullyRef.current = true
         recordSubmission()
@@ -434,8 +442,8 @@ export default function ImprovedDiscoveryEngine({ simulationMode, isReviewerMode
           inquiryId: response.inquiryId,
           assignedArchitect: response.assignedArchitect,
           slaResponseHours: response.slaResponseHours,
-          storageMode: response.storageMode || (effectiveSimulationMode === SIMULATION_MODES.SUCCESS ? 'local-fallback' : 'simulated-mock'),
-          isLiveBackend: Boolean(response.isLiveBackend),
+          storageMode: verifiedStorageMode,
+          isLiveBackend: isLive,
           data: payload,
         })
 

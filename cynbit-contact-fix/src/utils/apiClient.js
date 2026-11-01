@@ -9,32 +9,69 @@
  */
 
 export const API_BASE_URL =
-  import.meta.env.VITE_API_URL || 'http://localhost:5001/api'
+  (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_URL) ||
+  (typeof process !== 'undefined' && process.env && process.env.VITE_API_URL) ||
+  'http://localhost:5001/api'
 
 /**
  * Check connectivity and diagnostic status of the real Express backend.
+ *
+ * @param {number} [timeoutMs=3000] - Request abort timeout in milliseconds
+ * @returns {Promise<{ online: boolean, statusCode: number | null, data: object | null, error: string | null }>}
  */
-export async function checkBackendHealth() {
-  try {
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), 2500)
+export async function checkBackendHealth(timeoutMs = 3000) {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
 
+  try {
     const res = await fetch(`${API_BASE_URL}/health`, {
       method: 'GET',
+      headers: {
+        Accept: 'application/json',
+      },
       signal: controller.signal,
     })
-    clearTimeout(timer)
 
-    if (res.ok) {
-      const data = await res.json()
-      return {
-        online: true,
-        data,
+    const contentType = res.headers.get('content-type') || ''
+    let data = null
+    if (contentType.includes('application/json')) {
+      try {
+        data = await res.json()
+      } catch {
+        data = null
       }
     }
-    return { online: false, statusCode: res.status }
+
+    if (res.ok) {
+      return {
+        online: true,
+        statusCode: res.status,
+        data,
+        error: null,
+      }
+    }
+
+    // Unsuccessful HTTP response (e.g. 503 Service Unavailable or 500 Server Error)
+    return {
+      online: false,
+      statusCode: res.status,
+      data,
+      error:
+        (data && data.error) ||
+        `HTTP ${res.status}: Backend service reported unhealthy status.`,
+    }
   } catch (err) {
-    return { online: false, error: err.message }
+    const isTimeout = err.name === 'AbortError'
+    return {
+      online: false,
+      statusCode: null,
+      data: null,
+      error: isTimeout
+        ? `Backend health check timed out after ${timeoutMs}ms.`
+        : err.message || 'Network error during backend health check.',
+    }
+  } finally {
+    clearTimeout(timer)
   }
 }
 
@@ -61,7 +98,14 @@ export async function submitInquiryLive(payload, options = {}) {
 
     const contentType = res.headers.get('content-type') || ''
     const isJson = contentType.includes('application/json')
-    const responseData = isJson ? await res.json() : {}
+    let responseData = {}
+    if (isJson) {
+      try {
+        responseData = await res.json()
+      } catch {
+        responseData = {}
+      }
+    }
 
     if (res.ok && res.status === 201) {
       return {
@@ -76,11 +120,18 @@ export async function submitInquiryLive(payload, options = {}) {
       }
     }
 
-    // Handle structured HTTP errors returned by server
+    // Handle structured HTTP errors returned by server (e.g. 400, 429, 500, 503)
+    const isServerFailure = res.status >= 500
+    const defaultErrorType = res.status === 503
+      ? 'SERVICE_UNAVAILABLE'
+      : isServerFailure
+        ? 'SERVER_ERROR'
+        : 'CLIENT_ERROR'
+
     return {
       success: false,
       statusCode: res.status,
-      errorType: responseData.errorType || 'SERVER_ERROR',
+      errorType: responseData.errorType || defaultErrorType,
       error:
         responseData.error ||
         `HTTP ${res.status}: Failed to submit inquiry to the Cynbit API gateway.`,
@@ -95,7 +146,7 @@ export async function submitInquiryLive(payload, options = {}) {
       throw abortErr
     }
 
-    // Network error: Express backend unreachable
+    // Distinct Network failure: Express backend unreachable
     return {
       success: false,
       statusCode: 0,
@@ -105,6 +156,7 @@ export async function submitInquiryLive(payload, options = {}) {
         API_BASE_URL +
         '. Please ensure the backend server is running (`npm run server`).',
       isLiveBackend: true,
+      details: err.message,
     }
   }
 }

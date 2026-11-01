@@ -249,3 +249,25 @@ test('10. Successful Submission Lifecycle: clearing draft upon submission leaves
   const afterReload = loadScopingDraft(storage)
   assert.equal(afterReload.exists, false)
 })
+
+test('11. Draft Expiration: drafts older than TTL are automatically cleared', () => {
+  const storage = createMockStorage()
+  const fifteenDaysAgo = new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString()
+
+  const expiredPayload = {
+    version: DRAFT_SCHEMA_VERSION,
+    updatedAt: fifteenDaysAgo,
+    scoping: {
+      serviceStream: 'ai-agents',
+      projectTitle: 'Stale Expired Draft',
+    },
+  }
+  storage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(expiredPayload))
+
+  // Attempt to load expired draft
+  const res = loadScopingDraft(storage)
+  assert.equal(res.exists, false, 'Expired draft should be reported as non-existent')
+  assert.equal(res.valid, false)
+  assert.equal(res.expired, true)
+  assert.equal(storage.getItem(DRAFT_STORAGE_KEY), null, 'Expired draft should be purged from storage')
+})
