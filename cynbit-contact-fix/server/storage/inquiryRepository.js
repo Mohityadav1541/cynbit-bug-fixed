@@ -503,9 +503,9 @@ export const inquiryRepository = {
         databaseConfigured: Boolean(config.DATABASE_URL),
         localFallbackAllowed: false,
         environment: config.NODE_ENV,
-        error:
-          connectionError ||
-          'PostgreSQL database connection is unavailable. Inquiries will return HTTP 503.',
+        error: connectionError
+          ? `PostgreSQL database connection is unavailable: ${connectionError}`
+          : 'PostgreSQL database connection is unavailable. Inquiries will return HTTP 503.',
       }
     }
 
