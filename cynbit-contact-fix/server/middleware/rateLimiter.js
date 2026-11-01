@@ -1,4 +1,5 @@
 import net from 'node:net'
+import { Redis as UpstashRedis } from '@upstash/redis'
 import { config } from '../config.js'
 
 /**
@@ -148,7 +149,7 @@ export class RedisRateLimitStore {
   }
 
   async increment(clientIp, now = Date.now()) {
-    if (!this.client || typeof this.client.multi !== 'function') {
+    if (!this.client) {
       return this.fallbackStore.increment(clientIp, now)
     }
 
@@ -157,17 +158,32 @@ export class RedisRateLimitStore {
       const windowStart = now - this.windowMs
       const windowSeconds = Math.ceil(this.windowMs / 1000)
 
-      // Atomic sliding window using Redis Sorted Sets
-      const results = await this.client
-        .multi()
-        .zremrangebyscore(key, 0, windowStart)
-        .zadd(key, now, `${now}-${Math.random()}`)
-        .zcard(key)
-        .expire(key, windowSeconds + 5)
-        .exec()
+      let results
+      // Support Upstash Redis REST client (pipeline with { score, member })
+      if (typeof this.client.pipeline === 'function') {
+        const pipeline = this.client.pipeline()
+        pipeline.zremrangebyscore(key, 0, windowStart)
+        pipeline.zadd(key, { score: now, member: `${now}-${Math.random()}` })
+        pipeline.zcard(key)
+        pipeline.expire(key, windowSeconds + 5)
+        results = await pipeline.exec()
+      } else if (typeof this.client.multi === 'function') {
+        // Support standard TCP Redis client (ioredis, node-redis)
+        results = await this.client
+          .multi()
+          .zremrangebyscore(key, 0, windowStart)
+          .zadd(key, now, `${now}-${Math.random()}`)
+          .zcard(key)
+          .expire(key, windowSeconds + 5)
+          .exec()
+      } else {
+        return this.fallbackStore.increment(clientIp, now)
+      }
 
       // zcard result is at index 2
-      const currentHits = results && results[2] ? Number(results[2][1] ?? results[2]) : 1
+      const currentHits = results && results[2] !== undefined
+        ? Number(Array.isArray(results[2]) ? (results[2][1] ?? results[2][0]) : results[2])
+        : 1
 
       if (currentHits > this.maxRequests) {
         const resetTime = now + this.windowMs
@@ -214,10 +230,36 @@ export class RateLimiter {
     this.redisClient = options.redisClient || null
     this.redisUrl = options.redisUrl || config.REDIS_URL
 
+    const isTestEnvironment =
+      options.isTest ??
+      (process.env.NODE_ENV === 'test' ||
+        process.env.npm_lifecycle_event === 'test' ||
+        process.argv.some((arg) => typeof arg === 'string' && arg.includes('test')))
+
     if (this.redisClient) {
       this.store = new RedisRateLimitStore(this.redisClient, this.windowMs, this.maxRequests)
       this.isDistributed = true
       this.limitationNotice = null
+    } else if (
+      !isTestEnvironment &&
+      config.UPSTASH_REDIS_REST_URL &&
+      config.UPSTASH_REDIS_REST_TOKEN
+    ) {
+      try {
+        const upstashClient = new UpstashRedis({
+          url: config.UPSTASH_REDIS_REST_URL,
+          token: config.UPSTASH_REDIS_REST_TOKEN,
+        })
+        this.store = new RedisRateLimitStore(upstashClient, this.windowMs, this.maxRequests)
+        this.isDistributed = true
+        this.limitationNotice = null
+      } catch (err) {
+        console.warn('[RateLimiter Warning]: Failed to initialize Upstash Redis, falling back to in-memory store:', err.message)
+        this.store = new InMemoryRateLimitStore(this.windowMs, this.maxRequests)
+        this.isDistributed = false
+        this.limitationNotice =
+          'SINGLE_INSTANCE_LIMITATION: In-memory rate limiting does not synchronize state across multiple backend instances. In multi-instance or horizontal cluster environments, configure REDIS_URL or enforce rate limiting at the reverse proxy / edge layer (e.g. Cloudflare WAF, NGINX limit_req, or AWS ALB).'
+      }
     } else {
       this.store = new InMemoryRateLimitStore(this.windowMs, this.maxRequests)
       this.isDistributed = false

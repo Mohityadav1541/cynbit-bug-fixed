@@ -383,6 +383,58 @@ describe('Cynbit Backend Express API Integration Tests', () => {
     assert.equal(r3.allowed, false)
 
     redisLimiter.close()
+
+    // 4. Test Upstash Redis pipeline support ({ score, member })
+    const mockUpstashMap = new Map()
+    const mockUpstashClient = {
+      pipeline() {
+        const ops = []
+        return {
+          zremrangebyscore(key, min, max) {
+            ops.push(() => {
+              const items = mockUpstashMap.get(key) || []
+              mockUpstashMap.set(key, items.filter((item) => item.score > max))
+            })
+            return this
+          },
+          zadd(key, entry) {
+            ops.push(() => {
+              const items = mockUpstashMap.get(key) || []
+              items.push(entry)
+              mockUpstashMap.set(key, items)
+            })
+            return this
+          },
+          zcard(key) {
+            ops.push(() => (mockUpstashMap.get(key) || []).length)
+            return this
+          },
+          expire() {
+            return this
+          },
+          async exec() {
+            for (let i = 0; i < 2; i++) ops[i]()
+            const count = ops[2]()
+            return [0, 1, count, 1] // Upstash returns scalar array
+          },
+        }
+      },
+    }
+
+    const upstashLimiter = new RateLimiter({
+      windowMs: 60000,
+      maxRequests: 2,
+      redisClient: mockUpstashClient,
+    })
+
+    const u1 = await upstashLimiter.store.increment('10.3.3.3')
+    assert.equal(u1.allowed, true)
+    const u2 = await upstashLimiter.store.increment('10.3.3.3')
+    assert.equal(u2.allowed, true)
+    const u3 = await upstashLimiter.store.increment('10.3.3.3')
+    assert.equal(u3.allowed, false)
+
+    upstashLimiter.close()
   })
 
   test('7. Security: GET /api/inquiries/:referenceId is decommissioned and returns 404 (no public inquiry lookup)', async () => {
