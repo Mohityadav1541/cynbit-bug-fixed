@@ -1,7 +1,7 @@
 import express from 'express'
 import crypto from 'crypto'
 import { inquirySubmissionSchema } from '../validators/inquirySchema.js'
-import { inquiryRateLimiter } from '../middleware/rateLimiter.js'
+import { inquiryRateLimiter, getClientIp } from '../middleware/rateLimiter.js'
 import { inquiryRepository } from '../storage/inquiryRepository.js'
 
 export const inquiriesRouter = express.Router()
@@ -63,11 +63,7 @@ inquiriesRouter.post('/inquiries', inquiryRateLimiter.middleware(), async (req, 
     const referenceId = generateReferenceId()
     const assignedArchitect = assignArchitect(validatedData.engagementStream)
     const slaResponseHours = 24
-    const clientIp =
-      req.headers['cf-connecting-ip'] ||
-      req.headers['x-forwarded-for']?.split(',')[0].trim() ||
-      req.socket.remoteAddress ||
-      '127.0.0.1'
+    const clientIp = getClientIp(req)
     const userAgent = req.headers['user-agent'] || 'Unknown'
 
     // 4. Persist to Database or Local Fallback Store

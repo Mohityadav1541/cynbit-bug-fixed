@@ -2,7 +2,13 @@ import { test, describe, before, after } from 'node:test'
 import assert from 'node:assert/strict'
 import http from 'node:http'
 import { app } from '../server/app.js'
-import { inquiryRateLimiter } from '../server/middleware/rateLimiter.js'
+import {
+  inquiryRateLimiter,
+  RateLimiter,
+  getClientIp,
+  InMemoryRateLimitStore,
+  RedisRateLimitStore,
+} from '../server/middleware/rateLimiter.js'
 import { localDevStore } from '../server/storage/localStore.js'
 import { inquiryRepository } from '../server/storage/inquiryRepository.js'
 
@@ -155,11 +161,21 @@ describe('Cynbit Backend Express API Integration Tests', () => {
     assert.equal(data.stack, undefined) // Zero stack trace leakage
   })
 
-  test('6. POST /api/inquiries: enforces server-side rate limiting (HTTP 429)', async () => {
+  test('6.1 Rate Limiting: normal requests and repeated requests from one IP return HTTP 429 and Retry-After', async () => {
     resetRateLimits()
 
-    // Send 5 valid requests (the allowed threshold)
-    for (let i = 0; i < 5; i++) {
+    // 1. Normal IP request: single request succeeds with 201 and sets rate limit headers
+    const firstRes = await fetch(`${baseUrl}/api/inquiries`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(validPayload),
+    })
+    assert.equal(firstRes.status, 201)
+    assert.equal(firstRes.headers.get('x-ratelimit-limit'), '5')
+    assert.equal(firstRes.headers.get('x-ratelimit-remaining'), '4')
+
+    // Send 4 more requests to exhaust the 5-request limit for this IP
+    for (let i = 1; i < 5; i++) {
       const res = await fetch(`${baseUrl}/api/inquiries`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -171,7 +187,7 @@ describe('Cynbit Backend Express API Integration Tests', () => {
       assert.equal(res.status, 201)
     }
 
-    // 6th request must be throttled with HTTP 429
+    // 6th request from same IP must be throttled with HTTP 429
     const throttledRes = await fetch(`${baseUrl}/api/inquiries`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -185,6 +201,187 @@ describe('Cynbit Backend Express API Integration Tests', () => {
     assert.equal(data.errorType, 'RATE_LIMIT_EXCEEDED')
     assert.ok(data.retryAfterSeconds > 0)
     assert.ok(throttledRes.headers.get('retry-after'))
+    assert.equal(throttledRes.headers.get('x-ratelimit-remaining'), '0')
+    assert.ok(throttledRes.headers.get('x-ratelimit-reset'))
+  })
+
+  test('6.2 Rate Limiting: different IP addresses maintain isolated, independent quotas', async () => {
+    const store = new InMemoryRateLimitStore(60000, 3)
+
+    // IP A sends 3 requests (exhausting its quota)
+    assert.equal((await store.increment('198.51.100.10')).allowed, true)
+    assert.equal((await store.increment('198.51.100.10')).allowed, true)
+    assert.equal((await store.increment('198.51.100.10')).allowed, true)
+    const blockedA = await store.increment('198.51.100.10')
+    assert.equal(blockedA.allowed, false)
+
+    // IP B sends a request — must be allowed because IP quotas are strictly isolated
+    const allowedB = await store.increment('203.0.113.25')
+    assert.equal(allowedB.allowed, true)
+    assert.equal(allowedB.remaining, 2)
+    store.close()
+  })
+
+  test('6.3 Rate Limiting Security: spoofed X-Forwarded-For & CF-Connecting-IP headers do not bypass rate limits', async () => {
+    resetRateLimits()
+
+    // Exhaust quota while cycling spoofed forwarded headers from the same connection
+    for (let i = 0; i < 5; i++) {
+      const res = await fetch(`${baseUrl}/api/inquiries`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Forwarded-For': `203.0.113.${i + 10}`, // Spoofed IP header
+          'CF-Connecting-IP': `198.51.100.${i + 10}`, // Spoofed Cloudflare header
+        },
+        body: JSON.stringify({
+          ...validPayload,
+          projectTitle: `Spoof Attempt ${i + 1}`,
+        }),
+      })
+      assert.equal(res.status, 201)
+    }
+
+    // 6th attempt with another spoofed header must STILL be blocked because
+    // the server extracts verified socket/client IP (req.ip) and never blindly trusts untrusted headers!
+    const spoofBypassRes = await fetch(`${baseUrl}/api/inquiries`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Forwarded-For': '192.0.2.99', // Another spoofed IP
+        'CF-Connecting-IP': '192.0.2.99',
+      },
+      body: JSON.stringify(validPayload),
+    })
+
+    assert.equal(spoofBypassRes.status, 429)
+    const data = await spoofBypassRes.json()
+    assert.equal(data.errorType, 'RATE_LIMIT_EXCEEDED')
+  })
+
+  test('6.4 Rate Limiting Security: malformed forwarded IP headers are safely sanitized', async () => {
+    // Test getClientIp sanitization with malformed headers and injections
+    const mockReqWithScript = {
+      ip: '<script>alert("xss")</script>',
+      socket: { remoteAddress: '127.0.0.1' },
+    }
+    assert.equal(getClientIp(mockReqWithScript), '127.0.0.1')
+
+    const mockReqWithInvalidOctet = {
+      ip: '999.999.999.999',
+      socket: { remoteAddress: '127.0.0.1' },
+    }
+    assert.equal(getClientIp(mockReqWithInvalidOctet), '127.0.0.1')
+
+    const mockReqWithIPv6Mapped = {
+      ip: '::ffff:192.168.1.100',
+      socket: { remoteAddress: '::ffff:192.168.1.100' },
+    }
+    assert.equal(getClientIp(mockReqWithIPv6Mapped), '192.168.1.100')
+  })
+
+  test('6.5 Rate Limiting: window expiration resets client quota', async () => {
+    // Create a temporary rate limiter with a 40ms sliding window
+    const fastStore = new InMemoryRateLimitStore(40, 2)
+
+    assert.equal((await fastStore.increment('10.0.0.1')).allowed, true)
+    assert.equal((await fastStore.increment('10.0.0.1')).allowed, true)
+    assert.equal((await fastStore.increment('10.0.0.1')).allowed, false) // 3rd request blocked
+
+    // Wait 50ms for window to expire
+    await new Promise((resolve) => setTimeout(resolve, 50))
+
+    // Must be allowed again after window expiration
+    const resetResult = await fastStore.increment('10.0.0.1')
+    assert.equal(resetResult.allowed, true)
+    fastStore.close()
+  })
+
+  test('6.6 Rate Limiting Architecture: in-memory multiple-instance limitations & Redis distributed store', async () => {
+    // 1. Verify single-instance in-memory limiter documents limitations
+    const inMemoryLimiter = new RateLimiter({ windowMs: 60000, maxRequests: 2 })
+    const diag = inMemoryLimiter.getDiagnostics()
+
+    assert.equal(diag.engine, 'in-memory-single-instance')
+    assert.equal(diag.isDistributed, false)
+    assert.ok(diag.limitationNotice.includes('SINGLE_INSTANCE_LIMITATION'))
+
+    // 2. Demonstrate that two distinct in-memory instances do not share state
+    const instanceA = new RateLimiter({ windowMs: 60000, maxRequests: 1 })
+    const instanceB = new RateLimiter({ windowMs: 60000, maxRequests: 1 })
+
+    // Instance A exhausts quota for 10.1.1.1
+    const resA1 = await instanceA.store.increment('10.1.1.1')
+    assert.equal(resA1.allowed, true)
+    const resA2 = await instanceA.store.increment('10.1.1.1')
+    assert.equal(resA2.allowed, false)
+
+    // Instance B has its own memory map, proving the multi-instance limitation
+    const resB1 = await instanceB.store.increment('10.1.1.1')
+    assert.equal(resB1.allowed, true)
+
+    instanceA.close()
+    instanceB.close()
+    inMemoryLimiter.close()
+
+    // 3. Test RedisRateLimitStore with mock Redis client verifying distributed code path
+    const mockRedisMap = new Map()
+    const mockRedisClient = {
+      multi() {
+        const ops = []
+        return {
+          zremrangebyscore(key, min, max) {
+            ops.push(() => {
+              const items = mockRedisMap.get(key) || []
+              mockRedisMap.set(key, items.filter((item) => item.score > max))
+            })
+            return this
+          },
+          zadd(key, score, member) {
+            ops.push(() => {
+              const items = mockRedisMap.get(key) || []
+              items.push({ score, member })
+              mockRedisMap.set(key, items)
+            })
+            return this
+          },
+          zcard(key) {
+            ops.push(() => {
+              return (mockRedisMap.get(key) || []).length
+            })
+            return this
+          },
+          expire() {
+            return this
+          },
+          async exec() {
+            for (let i = 0; i < 2; i++) ops[i]()
+            const count = ops[2]()
+            return [[null, 1], [null, 1], [null, count], [null, 1]]
+          },
+        }
+      },
+    }
+
+    const redisLimiter = new RateLimiter({
+      windowMs: 60000,
+      maxRequests: 2,
+      redisClient: mockRedisClient,
+    })
+
+    const redisDiag = redisLimiter.getDiagnostics()
+    assert.equal(redisDiag.engine, 'redis-distributed')
+    assert.equal(redisDiag.isDistributed, true)
+    assert.equal(redisDiag.limitationNotice, null)
+
+    const r1 = await redisLimiter.store.increment('10.2.2.2')
+    assert.equal(r1.allowed, true)
+    const r2 = await redisLimiter.store.increment('10.2.2.2')
+    assert.equal(r2.allowed, true)
+    const r3 = await redisLimiter.store.increment('10.2.2.2')
+    assert.equal(r3.allowed, false)
+
+    redisLimiter.close()
   })
 
   test('7. Security: GET /api/inquiries/:referenceId is decommissioned and returns 404 (no public inquiry lookup)', async () => {

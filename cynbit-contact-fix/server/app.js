@@ -8,6 +8,11 @@ import { notFoundHandler, errorHandler } from './middleware/errorHandler.js'
 
 export const app = express()
 
+// 0. Explicit Environment-Based Trust Proxy Configuration
+// Never blindly trust arbitrary forwarded headers. Express evaluates proxy trust
+// according to the environment TRUST_PROXY setting (e.g. 'loopback', 1, specific CIDR, or false)
+app.set('trust proxy', config.TRUST_PROXY)
+
 // 1. Core Security Headers with Helmet
 // Disables x-powered-by, sets nosniff, frameguard (clickjacking), HSTS, and Referrer Policy
 app.disable('x-powered-by')

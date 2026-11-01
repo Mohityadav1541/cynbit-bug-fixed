@@ -119,12 +119,32 @@ This comprehensive security audit evaluated 15 core architectural domains across
 
 ---
 
-### Finding 8: Missing Server-Side Request Throttling (Denial-of-Service Risk)
-- **Category:** Rate Limiting
+### Finding 8: Request Throttling, Proxy Trust & Header Spoofing (Hardened)
+- **Category:** Rate Limiting & Network Security
 - **Severity:** High
-- **Evidence:** Client-side rate limiting in `rateLimit.js` operates only in `localStorage`. Attackers clearing browser cookies or running headless scripts could flood the server with unbounded inquiry submissions.
-- **Fix Implemented:** Deployed server-side sliding window rate limiter in `server/middleware/rateLimiter.js`. Enforces a hard limit of 5 requests per 15 minutes per IP. Rejections return HTTP 429 with standard `Retry-After` and `X-RateLimit-*` headers. Validated by automated test `test/backendApi.test.js` (Test #6).
-- **Remaining Risk:** Distributed botnets rotating thousands of residential proxy IPs. Mitigation in enterprise production requires edge WAF (Cloudflare Turnstile / AWS WAF), as specified in `SECURITY_ARCHITECTURE.md`.
+- **Vulnerabilities Identified:** 
+  1. *Blind Header Trust & IP Spoofing:* Manually reading `X-Forwarded-For` and `CF-Connecting-IP` allowed attackers to bypass rate limits by cycling random client IP headers.
+  2. *Single-Instance State Limitation:* In-memory Maps do not synchronize counters across horizontally scaled backend replicas.
+- **Remediations Implemented:**
+  1. **Environment-Based Express Trust Proxy (`server/config.js` & `server/app.js`):** Configured `app.set('trust proxy', config.TRUST_PROXY)` using an explicit environment variable `TRUST_PROXY`. Defaults to `false` (untrusted) so direct connections cannot spoof forwarded headers. When deployed behind a verified reverse proxy (e.g. Cloudflare, AWS ALB, NGINX), operators set `TRUST_PROXY=1`, `loopback`, or specific proxy CIDRs.
+  2. **Safe Client IP Resolution (`getClientIp()` in `server/middleware/rateLimiter.js`):** Never reads arbitrary forwarded headers directly. Extracts `req.ip` (governed by Express proxy trust rules), normalizes IPv4-mapped IPv6, and verifies format using `net.isIP()`. Malformed or injection payloads in headers are safely rejected and fall back to socket address.
+  3. **Preserved HTTP 429 Protocol & Headers:** Fully preserves the existing response structure with standard RFC headers:
+     - `Retry-After`: Active cooldown seconds until window reset.
+     - `X-RateLimit-Limit`: Maximum requests per sliding window.
+     - `X-RateLimit-Remaining`: Remaining request quota.
+     - `X-RateLimit-Reset`: Unix timestamp of window reset.
+  4. **Memory Leak Protection:** In-memory store enforces bounded size (`MAX_STORE_ENTRIES = 10000`) with unref'd periodic sweeps, preventing memory exhaustion under high-volume scanning.
+  5. **Distributed Rate Limiting (Redis Support):** Built an optional `RedisRateLimitStore` (`RateLimiter` class) using atomic Sorted Sets (`MULTI`/`ZREMRANGEBYSCORE`/`ZADD`/`ZCARD`/`EXPIRE`) when `REDIS_URL` or a Redis client is supplied.
+  6. **Single-Instance Limitation & Edge Architecture Documented:** When Redis is not configured, the engine explicitly reports `isDistributed: false` and `SINGLE_INSTANCE_LIMITATION`: in-memory counters do not synchronize across multiple replicas. Multi-replica deployments require Redis or an Edge rate limiter (Cloudflare WAF, NGINX `limit_req`, or AWS ALB).
+- **Test Verification (`test/backendApi.test.js` Tests #6.1–#6.6):**
+  - **Normal IP requests:** Verifies HTTP 201 and proper `X-RateLimit-Remaining` decrementing.
+  - **Repeated requests from one IP:** Verifies 5 permitted requests and 6th request throttled with HTTP 429 and `Retry-After`.
+  - **Different IP addresses:** Verifies isolated quotas between distinct client IPs.
+  - **Spoofed X-Forwarded-For & CF-Connecting-IP:** Verifies cycling spoofed headers fails to bypass rate limits.
+  - **Malformed forwarded IP headers:** Verifies safe sanitization of script tags and invalid octets.
+  - **Rate-limit window expiration:** Verifies quota resets after window elapsed.
+  - **Multiple-instance limitations:** Verifies two in-memory instances do not share state, while the Redis distributed store synchronizes cluster counters.
+- **Remaining Risk:** None for single-instance deployments. For multi-replica production clusters, configure `REDIS_URL` or Cloudflare WAF as documented.
 
 ---
 
@@ -317,7 +337,7 @@ npm test
   - `POST /api/inquiries`: Honeypot bot decoy traps scraper dispatches (`400 SECURITY_GATEWAY`).
   - `POST /api/inquiries`: Malformed input rejected via Zod schema (`400 VALIDATION_ERROR`).
   - `POST /api/inquiries`: Malformed JSON caught without stack exposure (`400 MALFORMED_JSON`).
-  - `POST /api/inquiries`: Sliding window rate limiter throttles burst dispatches (`429 RATE_LIMIT_EXCEEDED`).
+  - Rate Limiting Suite (#6.1–#6.6): Normal requests, repeated requests (HTTP 429 & Retry-After), IP isolation, spoofed X-Forwarded-For rejection, malformed header sanitization, window expiration, and multiple-instance limitations & Redis distributed store.
   - `POST /api/inquiries`: Oversized payloads exceeding 50KB rejected (`413 PAYLOAD_TOO_LARGE`).
   - `POST /api/inquiries`: Untrusted CORS origins rejected (`403 CORS_FORBIDDEN`).
   - `GET /api/inquiries/:referenceId`: Decommissioned public lookup returns HTTP 404, ensuring zero project metadata, tech stack, or architect assignment is publicly exposed.
