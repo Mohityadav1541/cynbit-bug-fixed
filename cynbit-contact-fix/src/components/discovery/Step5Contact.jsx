@@ -219,7 +219,7 @@ export default function Step5Contact({ formData, errors, touched, onChange, onBl
         <div className="bg-surface-container-low p-4 rounded-2xl border border-outline-variant/15 flex items-center gap-3 text-xs text-on-surface-variant mt-2 font-body">
           <ShieldCheck className="w-5 h-5 text-primary shrink-0" aria-hidden="true" />
           <span>
-            Strict Enterprise NDA Protected: We never share or sell contact details. All data is processed securely under Cynbit Technologies security guidelines.
+            <strong>Privacy &amp; Data Minimization:</strong> Contact details entered here are strictly excluded from browser storage drafts. They are transmitted directly over encrypted TLS solely to deliver your architectural discovery brief and assign an architect under Cynbit Technologies security guidelines.
           </span>
         </div>
 

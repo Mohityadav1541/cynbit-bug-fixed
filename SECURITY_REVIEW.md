@@ -249,6 +249,29 @@ This comprehensive security audit evaluated 15 core architectural domains across
 
 ---
 
+### Finding 18: Unnecessary Personal Data Collection & Metadata Retention (RESOLVED)
+- **Category:** Data Minimization, Privacy & Personal Data Retention
+- **Severity:** Medium
+- **Vulnerability Identified:** The backend previously collected and persisted raw client IP addresses and user-agent strings alongside customer discovery inquiries. Collecting and retaining network identifiers indefinitely without a justified business purpose creates unnecessary privacy risk. Furthermore, full customer payloads risk exposure if printed in application logs or server exception diagnostics.
+- **Remediation Implemented:**
+  1. **Data Minimization on Inquiries:** Removed `ip_address` and `user_agent` from all inquiry database insert queries and local storage persistence. The database schema treats legacy columns as nullable (`DEFAULT NULL`) ensuring zero breaking changes to existing data.
+  2. **Transient Rate-Limiting Only:** Client IP addresses are evaluated strictly in volatile in-memory or Redis sliding-window cache to enforce rate limits (5 requests / 15 minutes) and are **never** persisted to customer records or logs.
+  3. **Zero Network Identifiers in Public APIs:** Public API responses (`POST /api/inquiries`, `GET /api/health/*`) strictly never expose client IP addresses or user agents.
+  4. **Strict Payload Logging Prohibition:** Server error handlers and logging hooks are prohibited from printing complete request payloads or sensitive contact fields (`fullName`, `email`, `phone`, `projectDescription`).
+  5. **Scoping-Only Browser Drafts:** Client-side draft persistence (`extractScopingFields`) strictly whitelists project parameters (stream, title, tech stack, timeline, budget) and enforces 100% exclusion of personal contact identifiers.
+  6. **Clear UI Notice & Draft Deletion:** Displayed a prominent privacy notice on browser draft persistence in `SummarySidebar` and `Step5Contact`, accompanied by a one-click **Clear Draft** button to instantly purge LocalStorage.
+  7. **Documented Retention & Erasure Policy:** Established a 90-day retention schedule for non-converting inquiries and provided a documented erasure channel (`opportunities@cynbit.in` / `privacy@cynbit.in`).
+  8. **Statutory Compliance Disclaimer:** Explicitly documented that while the system follows defensive data minimization principles, formal statutory legal compliance (e.g., GDPR, CCPA, DPDP Act) requires an independent organizational legal review.
+- **Verification:** Automated tests in `test/backendApi.test.js` (Tests #16.1–#16.5) verify:
+  - `POST /api/inquiries` public response excludes IP address and user-agent.
+  - Storage persistence does not retain `ipAddress` or `userAgent` in inquiry records.
+  - `localDevStore.save()` sanitizes and strips sensitive tokens.
+  - Server error logs do not output customer personal information or confidential project descriptions.
+  - Draft extraction logic strictly discards all contact credentials.
+- **Remaining Risk:** None. Data collection is strictly aligned with purpose necessity.
+
+---
+
 ## 3. Production Deployment Security Configuration
 
 When deploying this application to cloud platforms, the following platform-specific defensive header configurations must be applied:

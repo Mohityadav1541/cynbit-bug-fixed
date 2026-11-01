@@ -244,8 +244,9 @@ CREATE TABLE IF NOT EXISTS inquiries (
   status VARCHAR(50) DEFAULT 'PENDING_REVIEW',
   assigned_architect VARCHAR(100),
   sla_response_hours INTEGER DEFAULT 24,
-  ip_address VARCHAR(45),
-  user_agent TEXT,
+  -- Data Minimization: ip_address and user_agent are omitted from active inserts
+  ip_address VARCHAR(45) DEFAULT NULL,
+  user_agent TEXT DEFAULT NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -338,4 +339,30 @@ spec:
             timeoutSeconds: 3
             failureThreshold: 2
 ```
+
+---
+
+## 7. Data Minimization, Metadata Purpose & Retention Policy
+
+### 7.1 Purpose of Retained Metadata
+Every field collected through the Discovery API serves a documented, necessary business function:
+
+| Category | Fields Retained | Business Purpose |
+| :--- | :--- | :--- |
+| **Project Scoping** | `engagementStream`, `projectTitle`, `projectDescription`, `techStack`, `timeline`, `budgetRange`, `businessObjective`, `mainChallenges`, `expectedFunctionality` | Required to evaluate enterprise architectural feasibility, formulate a technical discovery brief, and assign specialized domain architects. |
+| **Contact Details** | `fullName`, `email`, `phone`, `company` | Required to deliver the architectural blueprint, schedule consultation calls, and communicate with prospective engineering clients. |
+| **Operational Metadata**| `referenceId`, `status`, `assignedArchitect`, `slaResponseHours`, `createdAt`, `updatedAt` | Customer acknowledgement tracking, audit verification, and fulfillment of response SLAs. |
+
+### 7.2 Non-Retained & Ephemeral Metadata
+- **Client IP Address:** Evaluated transiently in volatile sliding-window memory or Redis cache strictly to enforce rate limits (5 requests / 15 minutes) and mitigate automated attacks. It is **never** persisted to database records, linked to customer contact details, or returned via APIs.
+- **User-Agent:** Used transiently for request parsing; never stored or returned.
+
+### 7.3 Data Retention & Deletion Policy
+1. **Retention Timeline:** Prospective architectural discovery inquiries that do not transition into active contracted engagements are retained for a maximum of **90 days**, after which they are permanently purged.
+2. **Right to Erasure (Manual Purge):** Prospective clients can request immediate, permanent deletion of their inquiry records by submitting their `referenceId` to `opportunities@cynbit.in` or `privacy@cynbit.in`.
+3. **Browser LocalStorage Policy:** Form drafts auto-saved in the client browser contain strictly project scoping specifications (zero PII) and can be immediately erased at any point via the UI **Clear Draft** button or automatically upon successful submission.
+
+### 7.4 Statutory Privacy Notice
+> [!NOTE]
+> **Privacy by Design Notice:** This system is engineered under strict principles of data minimization and purpose limitation. Formal statutory legal compliance under specific territorial privacy frameworks (e.g., GDPR, CCPA, or DPDP Act) requires an independent organizational legal review.
 

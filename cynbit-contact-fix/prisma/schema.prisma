@@ -26,8 +26,7 @@ model Inquiry {
   status                String   @default("PENDING_REVIEW")
   assignedArchitect     String   @default("Principal Cloud & AI Architect")
   slaResponseHours      Int      @default(24)
-  ipAddress             String?
-  userAgent             String?
+  // Data minimization: ipAddress and userAgent are excluded from persistence
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 

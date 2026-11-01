@@ -63,22 +63,20 @@ inquiriesRouter.post('/inquiries', inquiryRateLimiter.middleware(), async (req, 
     const referenceId = generateReferenceId()
     const assignedArchitect = assignArchitect(validatedData.engagementStream)
     const slaResponseHours = 24
-    const clientIp = getClientIp(req)
-    const userAgent = req.headers['user-agent'] || 'Unknown'
 
     // 4. Persist to Database or Local Fallback Store
+    // DATA MINIMIZATION: Client IP and User-Agent are NOT collected or persisted in customer records.
+    // Client IP is evaluated transiently in volatile cache solely by rateLimiter middleware for abuse prevention.
     const savedInquiry = await inquiryRepository.saveInquiry({
       ...validatedData,
       referenceId,
       assignedArchitect,
       slaResponseHours,
-      ipAddress: clientIp,
-      userAgent,
       status: 'PENDING_REVIEW',
     })
 
     // 5. Return Structured Response (Customer acknowledgement receipt)
-    // Does NOT expose internal database credentials or sensitive details
+    // Strictly does NOT expose client IP, user agent, internal database credentials or sensitive details
     return res.status(201).json({
       success: true,
       statusCode: 201,

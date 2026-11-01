@@ -12,6 +12,7 @@ import {
 import { localDevStore } from '../server/storage/localStore.js'
 import { inquiryRepository, sanitizeConnectionUrl } from '../server/storage/inquiryRepository.js'
 import { config } from '../server/config.js'
+import { extractScopingFields } from '../src/utils/draftStorage.js'
 
 describe('Cynbit Backend Express API Integration Tests', () => {
   let server
@@ -893,6 +894,155 @@ describe('Cynbit Backend Express API Integration Tests', () => {
         inquiryRepository.setIsDbConnected(originalConnected)
         inquiryRepository.setPgPool(originalPool)
       }
+    })
+  })
+
+  /* ==========================================================================
+     SECTION 16: DATA MINIMIZATION, PRIVACY & PERSONAL DATA PROTECTION
+     ========================================================================== */
+  describe('16. Data Minimization, Privacy & Personal Data Protection', () => {
+    test('16.1 POST /api/inquiries response strictly excludes IP address and user-agent', async () => {
+      resetRateLimits()
+
+      const res = await fetch(`${baseUrl}/api/inquiries`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'User-Agent': 'Mozilla/5.0 (DefensivePrivacyAudit/1.0)',
+          'X-Forwarded-For': '198.51.100.42',
+        },
+        body: JSON.stringify(validPayload),
+      })
+
+      assert.equal(res.status, 201)
+      const data = await res.json()
+
+      // CRITICAL PRIVACY ASSERTIONS: Zero client IP or user agent leakage in public response
+      assert.equal(data.ipAddress, undefined)
+      assert.equal(data.clientIp, undefined)
+      assert.equal(data.ip, undefined)
+      assert.equal(data.userAgent, undefined)
+    })
+
+    test('16.2 Inquiry persistence does NOT store raw IP address or user-agent with customer records', async () => {
+      resetRateLimits()
+
+      const res = await fetch(`${baseUrl}/api/inquiries`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'User-Agent': 'Mozilla/5.0 (AuditAgent/1.0)',
+        },
+        body: JSON.stringify(validPayload),
+      })
+
+      assert.equal(res.status, 201)
+      const data = await res.json()
+
+      // Retrieve persisted record from local development store
+      const stored = localDevStore.findByReferenceId(data.referenceId)
+      assert.ok(stored)
+
+      // DATA MINIMIZATION ASSERTIONS: IP and user agent are omitted from storage records
+      assert.equal(stored.ipAddress, undefined, 'ipAddress must not be persisted in customer records')
+      assert.equal(stored.userAgent, undefined, 'userAgent must not be persisted in customer records')
+    })
+
+    test('16.3 LocalStore sanitizes sensitive tokens: strips ipAddress, userAgent, and honeypots', () => {
+      const dirtyInquiry = {
+        referenceId: 'CYN-DATA-MIN-TEST',
+        projectTitle: 'Data Privacy Engine',
+        fullName: 'Audit User',
+        email: 'audit@example.com',
+        ipAddress: '203.0.113.195',
+        userAgent: 'Custom-Crawler/2.0',
+        website_url_hp: 'spam-bot-token',
+      }
+
+      const saved = localDevStore.save(dirtyInquiry)
+
+      assert.equal(saved.ipAddress, undefined)
+      assert.equal(saved.userAgent, undefined)
+      assert.equal(saved.website_url_hp, undefined)
+      assert.equal(saved.projectTitle, 'Data Privacy Engine')
+    })
+
+    test('16.4 Logging privacy: server error handler does NOT log complete customer payload or sensitive PII', async () => {
+      resetRateLimits()
+
+      // Spy on console.error to check whether customer PII is leaked
+      const errorLogs = []
+      const originalConsoleError = console.error
+      console.error = (...args) => {
+        errorLogs.push(args)
+      }
+
+      const originalSave = inquiryRepository.saveInquiry
+      inquiryRepository.saveInquiry = async () => {
+        throw new Error('SIMULATED_LOGGING_PRIVACY_EXCEPTION')
+      }
+
+      try {
+        const sensitivePayload = {
+          ...validPayload,
+          fullName: 'Targeted Individual Name',
+          phone: '+91-9999988888',
+          projectDescription: 'Extremely confidential patented algorithmic logic description here.',
+        }
+
+        const res = await fetch(`${baseUrl}/api/inquiries`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(sensitivePayload),
+        })
+
+        assert.equal(res.status, 500)
+
+        // Check captured console error logs
+        const loggedText = JSON.stringify(errorLogs)
+        assert.ok(!loggedText.includes('Targeted Individual Name'), 'Logs must NOT contain customer full name')
+        assert.ok(!loggedText.includes('+91-9999988888'), 'Logs must NOT contain customer phone numbers')
+        assert.ok(!loggedText.includes('Extremely confidential patented'), 'Logs must NOT contain full project descriptions')
+      } finally {
+        inquiryRepository.saveInquiry = originalSave
+        console.error = originalConsoleError
+      }
+    })
+
+    test('16.5 Draft Storage strictly excludes personal data: only scoping fields are extracted', () => {
+      const fullFormState = {
+        serviceStream: 'ai-agents',
+        projectTitle: 'Autonomous Reasoning Node',
+        projectDescription: 'Decentralized AI cluster for mission-critical dispatch.',
+        businessObjective: 'Reduce latency',
+        mainChallenges: 'GPU synchronization',
+        expectedFunctionality: 'Real-time telemetry',
+        techFocus: ['Python', 'PostgreSQL'],
+        customTech: 'LangGraph',
+        timeline: '1-3-months',
+        budgetIndex: 3,
+        isBudgetUndecided: false,
+        // SENSITIVE PERSONAL DATA:
+        fullName: 'Dr. Jane Doe',
+        email: 'jane.doe@confidential-corp.com',
+        phone: '+91-9876543210',
+        company: 'Confidential Corp',
+        website_url_hp: 'spam-bot-value',
+      }
+
+      const scopingSubset = extractScopingFields(fullFormState)
+
+      // Verified: Scoping fields are preserved
+      assert.equal(scopingSubset.serviceStream, 'ai-agents')
+      assert.equal(scopingSubset.projectTitle, 'Autonomous Reasoning Node')
+      assert.equal(scopingSubset.customTech, 'LangGraph')
+
+      // Verified: ALL personal contact identifiers are strictly excluded
+      assert.equal(scopingSubset.fullName, undefined)
+      assert.equal(scopingSubset.email, undefined)
+      assert.equal(scopingSubset.phone, undefined)
+      assert.equal(scopingSubset.company, undefined)
+      assert.equal(scopingSubset.website_url_hp, undefined)
     })
   })
 })

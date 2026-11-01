@@ -226,14 +226,12 @@ export const inquiryRepository = {
             status,
             assigned_architect,
             sla_response_hours,
-            ip_address,
-            user_agent,
             created_at,
             updated_at
           ) VALUES (
             $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-            $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
-            $21, $22
+            $11, $12, $13, $14, $15, $16, $17, $18,
+            $19, $20
           ) RETURNING *;
         `
         const values = [
@@ -255,8 +253,6 @@ export const inquiryRepository = {
           inquiryData.status || 'PENDING_REVIEW',
           inquiryData.assignedArchitect || 'Principal Cloud & AI Architect',
           inquiryData.slaResponseHours || 24,
-          inquiryData.ipAddress || null,
-          inquiryData.userAgent || null,
           createdAt,
           updatedAt,
         ]
@@ -341,14 +337,12 @@ export const inquiryRepository = {
             status,
             assigned_architect,
             sla_response_hours,
-            ip_address,
-            user_agent,
             created_at,
             updated_at
           ) VALUES (
             $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-            $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
-            $21, $22
+            $11, $12, $13, $14, $15, $16, $17, $18,
+            $19, $20
           ) RETURNING *;
         `
         const values = [
@@ -370,8 +364,6 @@ export const inquiryRepository = {
           inquiryData.status || 'PENDING_REVIEW',
           inquiryData.assignedArchitect || 'Principal Cloud & AI Architect',
           inquiryData.slaResponseHours || 24,
-          inquiryData.ipAddress || null,
-          inquiryData.userAgent || null,
           createdAt,
           updatedAt,
         ]
