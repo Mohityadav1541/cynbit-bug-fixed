@@ -45,18 +45,28 @@ This comprehensive security audit evaluated 15 core architectural domains across
 ### Finding 1: Authentication Boundary Definition
 - **Category:** Authentication
 - **Severity:** Low / Informational
-- **Evidence:** The application currently exposes public endpoints (`GET /api/health`, `POST /api/inquiries`, and public status lookup `GET /api/inquiries/:referenceId`). No administrator or authenticated employee portal is present.
+- **Evidence:** The application currently exposes public endpoints (`GET /api/health` and `POST /api/inquiries`). No administrator or authenticated employee portal is present.
 - **Fix Implemented:** Documented the architectural boundary. Clarified that no private enterprise data is reachable without credentials. Any future administrative inquiry dashboard must require token-based authentication (OAuth2 / JWT with HTTP-only cookies).
 - **Remaining Risk:** Low. Public intake endpoints remain accessible by design for customer lead generation.
 
 ---
 
-### Finding 2: Public Reference Lookup PII Harvesting Vulnerability
-- **Category:** Authorization & Privacy
+### Finding 2: Public Inquiry Lookup Metadata Exposure Vulnerability (RESOLVED)
+- **Category:** Authorization, Privacy & Cryptographic Entropy
 - **Severity:** High
-- **Evidence:** If `GET /api/inquiries/:referenceId` returned the raw database row, an attacker enumerating or guessing reference IDs could harvest prospective client names, email addresses, and phone numbers.
-- **Fix Implemented:** Implemented strict field-level redaction in `server/routes/inquiries.js`. The endpoint returns only non-sensitive scoping metadata (`referenceId`, `engagementStream`, `projectTitle`, `techStack`, `timeline`, `status`, `assignedArchitect`, `slaResponseHours`). Personal information (`fullName`, `email`, `phone`, `company`, `ipAddress`) is strictly excluded. Validated by automated test `test/backendApi.test.js` (Test #7).
-- **Remaining Risk:** Negligible. Reference IDs use cryptographically secure random bytes (`CYN-YYYYMMDD-XXXXXX`), preventing sequential enumeration attacks.
+- **Vulnerability Identified:** The endpoint `GET /api/inquiries/:referenceId` previously returned project title, engagement stream, technology stack, timeline, application status, and assigned architect name. Furthermore, reference IDs utilized only 3 random bytes (24 bits = 6 hex characters), presenting a risk of metadata reconnaissance and potential guessing attacks.
+- **Remediation Implemented:** 
+  1. **Decommissioned Public Lookup Endpoint:** Completely removed `GET /api/inquiries/:referenceId` from public routes. Any GET requests to `/api/inquiries/:referenceId` now return HTTP 404 (Not Found).
+  2. **Removed Client Lookup Function:** Removed `lookupInquiryByReference()` from `src/utils/apiClient.js`. No frontend components query public inquiry data.
+  3. **High-Entropy Reference ID Generation:** Upgraded reference ID generation in `server/routes/inquiries.js` to use at least 16 cryptographically random bytes (`crypto.randomBytes(16)` = 32 hexadecimal characters = 128 bits of entropy, formatted as `CYN-YYYYMMDD-[32-HEX-CHARS]`).
+  4. **Strict Acknowledgement Scope:** Reference IDs are strictly utilized as customer confirmation receipts returned in the `POST /api/inquiries` response. Reference IDs are **never** treated as authentication credentials or bearer authorization tokens.
+  5. **Zero Public Metadata Exposure:** No confidential inquiry data (project description, customer details, tech stack, or internal architect assignment) can be obtained through public API endpoints.
+  6. **Future Authentication Architecture:** Any future inquiry status lookup feature must utilize an independent secure verification mechanism (e.g. time-limited cryptographic magic link with email ownership verification, or session-authenticated client portal) rather than unauthenticated reference ID lookups.
+- **Verification:** Automated tests in `test/backendApi.test.js` (Tests #2, #7, #8) verify that:
+  - `POST /api/inquiries` generates a 16-byte cryptographically secure reference ID (`/^CYN-\d{8}-[A-F0-9]{32}$/`).
+  - `GET /api/inquiries/:referenceId` returns HTTP 404 with zero inquiry data or internal assignment leakage.
+  - Arbitrary and guessed reference IDs return HTTP 404 without leaking metadata.
+- **Remaining Risk:** None. The attack surface has been completely eliminated by decommissioning the unauthenticated public lookup endpoint.
 
 ---
 
@@ -310,7 +320,8 @@ npm test
   - `POST /api/inquiries`: Sliding window rate limiter throttles burst dispatches (`429 RATE_LIMIT_EXCEEDED`).
   - `POST /api/inquiries`: Oversized payloads exceeding 50KB rejected (`413 PAYLOAD_TOO_LARGE`).
   - `POST /api/inquiries`: Untrusted CORS origins rejected (`403 CORS_FORBIDDEN`).
-  - `GET /api/inquiries/:referenceId`: Public reference lookup returns non-sensitive data only (strictly redacts full name, email, phone, and IP address).
+  - `GET /api/inquiries/:referenceId`: Decommissioned public lookup returns HTTP 404, ensuring zero project metadata, tech stack, or architect assignment is publicly exposed.
+  - Reference ID Security: Validates generation of 16-byte cryptographically random tokens (`CYN-YYYYMMDD-[32-hex-chars]`). Arbitrary/guessed IDs return 404 without data leakage.
   - Centralized Error Handler: Catches unexpected repository throws, returning HTTP 500 without leaking stack traces or internal exception messages.
   - Helmet Security Headers: Verifies `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, and omission of `X-Powered-By`.
 - **`test/draftStorage.test.js`**:

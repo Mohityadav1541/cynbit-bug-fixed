@@ -96,9 +96,10 @@ export const inquirySubmissionSchema = z.object({
 })
 
 /**
- * Validates referenceId format (e.g. CYN-YYYYMMDD-XXXXXX)
+ * Validates referenceId format with at least 16 cryptographically random bytes (32 hex characters)
+ * e.g. CYN-YYYYMMDD-<32-hex-characters>
  */
 export const referenceIdSchema = z
   .string()
-  .regex(/^CYN-\d{8}-[A-F0-9]{6}$/, 'Reference ID format must match CYN-YYYYMMDD-XXXXXX')
+  .regex(/^CYN-\d{8}-[A-F0-9]{32}$/, 'Reference ID format must match CYN-YYYYMMDD-<32-hex-characters>')
 

@@ -167,7 +167,7 @@ cynbit project /
     │   ├── config.js                # Environment configuration loader
     │   ├── routes/
     │   │   ├── health.js            # GET /api/health storage diagnostics
-    │   │   └── inquiries.js         # POST /api/inquiries & GET /api/inquiries/:refId
+    │   │   └── inquiries.js         # POST /api/inquiries (16-byte cryptographic receipt)
     │   ├── middleware/
     │   │   ├── rateLimiter.js       # Sliding-window IP rate limiter
     │   │   └── validateRequest.js   # Zod request validation middleware

@@ -156,8 +156,11 @@ Cynbit's production form failed basic WCAG compliance by omitting label-for and 
 
 | Security Dimension | Implementation & Defense Mechanism |
 |---|---|
-| **Input Validation** | Dual-layer validation: Client-side RFC regex + Server-side Zod schema (`server/middleware/validateRequest.js`). |
+| **Input Validation** | Dual-layer validation: Client-side RFC regex + Server-side Zod schema (`server/validators/inquirySchema.js`). |
 | **Output Encoding & XSS** | HTML entities sanitization (`sanitizeInput()`) neutralizing `<script>`, `onerror`, and iframe injections. |
+| **Public Route Decommissioning** | `GET /api/inquiries/:referenceId` decommissioned to eliminate public metadata exposure. No project titles, descriptions, tech stacks, timelines, or staff assignments are publicly readable. |
+| **Cryptographic Reference IDs** | Generated using at least 16 cryptographically random bytes (`crypto.randomBytes(16)` = 128 bits entropy, formatted as `CYN-YYYYMMDD-[32-hex-chars]`). Reference IDs serve strictly as client acknowledgement receipts and are never treated as authentication credentials. |
+| **Future Status Verification** | Any future self-service inquiry status tracking must use an independent, authenticated verification mechanism (e.g. time-limited cryptographic magic link verified against email ownership, or authenticated client portal session). |
 | **SQL Injection Prevention** | All database operations use parameterized queries via Prisma ORM / pg connection pool; zero string concatenation. |
 | **Payload Size Limiting** | Express body parser enforces a strict `50KB` limit (`express.json({ limit: '50kb' })`), rejecting bloated payloads with HTTP 413. |
 | **Authoritative Rate Limiting** | Sliding-window IP rate limiter (`server/middleware/rateLimiter.js`) with HTTP 429 and `Retry-After` headers. |

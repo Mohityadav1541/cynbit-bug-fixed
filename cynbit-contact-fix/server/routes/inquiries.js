@@ -1,18 +1,22 @@
 import express from 'express'
 import crypto from 'crypto'
-import { inquirySubmissionSchema, referenceIdSchema } from '../validators/inquirySchema.js'
+import { inquirySubmissionSchema } from '../validators/inquirySchema.js'
 import { inquiryRateLimiter } from '../middleware/rateLimiter.js'
 import { inquiryRepository } from '../storage/inquiryRepository.js'
 
 export const inquiriesRouter = express.Router()
 
 /**
- * Generate a cryptographically secure, enterprise-format reference ID.
- * Example: CYN-20261101-A9E24F
+ * Generate a cryptographically secure reference ID for customer acknowledgement.
+ * Uses at least 16 cryptographically random bytes (128 bits of entropy) = 32 hex characters.
+ * Example: CYN-20261101-A9E24F8812BC4D6E8901FA2357CB90ED
+ *
+ * NOTE: Reference IDs serve solely as client receipt and acknowledgement identifiers.
+ * They are NEVER treated as authorization credentials or authentication tokens.
  */
 function generateReferenceId() {
   const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '')
-  const randomHex = crypto.randomBytes(3).toString('hex').toUpperCase()
+  const randomHex = crypto.randomBytes(16).toString('hex').toUpperCase()
   return `CYN-${dateStr}-${randomHex}`
 }
 
@@ -55,6 +59,7 @@ inquiriesRouter.post('/inquiries', inquiryRateLimiter.middleware(), async (req, 
     const validatedData = inquirySubmissionSchema.parse(req.body)
 
     // 3. Generate Reference ID and Technical Metadata
+    // Uses 16 cryptographically random bytes for high entropy acknowledgement identifier
     const referenceId = generateReferenceId()
     const assignedArchitect = assignArchitect(validatedData.engagementStream)
     const slaResponseHours = 24
@@ -76,7 +81,8 @@ inquiriesRouter.post('/inquiries', inquiryRateLimiter.middleware(), async (req, 
       status: 'PENDING_REVIEW',
     })
 
-    // 5. Return Structured Response (No internal server traces)
+    // 5. Return Structured Response (Customer acknowledgement receipt)
+    // Does NOT expose internal database credentials or sensitive details
     return res.status(201).json({
       success: true,
       statusCode: 201,
@@ -93,58 +99,22 @@ inquiriesRouter.post('/inquiries', inquiryRateLimiter.middleware(), async (req, 
 })
 
 /**
- * GET /api/inquiries/:referenceId
- * Secure public reference lookup.
- * Returns only non-sensitive scoping metadata.
- * Explicitly redacts personal contact information (email, phone, name) to prevent PII harvesting.
+ * SECURITY ARCHITECTURE NOTE:
+ * Public inquiry lookup by reference ID (GET /api/inquiries/:referenceId) has been REMOVED.
+ *
+ * Vulnerability Remediation:
+ * Previously, GET /api/inquiries/:referenceId returned project titles, engagement streams,
+ * technology stacks, timelines, application status, and assigned architect names.
+ * Because reference IDs were relatively short and publicly accessible without authentication,
+ * this posed a metadata reconnaissance and enumeration risk.
+ *
+ * Security Requirements:
+ * 1. Reference IDs are issued solely for client acknowledgement and offline receipt tracking.
+ * 2. Reference IDs are NEVER treated as authentication credentials or bearer tokens.
+ * 3. No confidential project descriptions, customer details, or internal assignment
+ *    information are exposed through any public endpoint.
+ * 4. Future Requirement: If an application-status tracking capability is needed in the future,
+ *    it MUST employ an independent secure verification mechanism (e.g. session-authenticated
+ *    client portal, time-limited cryptographic magic link verified against the registered email,
+ *    or HMAC-signed one-time access tokens).
  */
-inquiriesRouter.get('/inquiries/:referenceId', inquiryRateLimiter.middleware(), async (req, res, next) => {
-  try {
-    const { referenceId } = req.params
-
-    // 1. Format validation
-    const parsedId = referenceIdSchema.safeParse(referenceId)
-    if (!parsedId.success) {
-      return res.status(400).json({
-        success: false,
-        statusCode: 400,
-        errorType: 'INVALID_REFERENCE_ID',
-        error: 'Invalid reference ID format. Format must match CYN-YYYYMMDD-XXXXXX.',
-      })
-    }
-
-    // 2. Lookup in storage
-    const inquiry = await inquiryRepository.findByReferenceId(parsedId.data)
-    if (!inquiry) {
-      return res.status(404).json({
-        success: false,
-        statusCode: 404,
-        errorType: 'INQUIRY_NOT_FOUND',
-        error: `No architectural discovery enquiry found with reference ID: ${referenceId}`,
-      })
-    }
-
-    // 3. Redact all PII / sensitive data for public lookup
-    const sanitizedRecord = {
-      referenceId: inquiry.referenceId,
-      engagementStream: inquiry.engagementStream,
-      projectTitle: inquiry.projectTitle,
-      techStack: inquiry.techStack || [],
-      timeline: inquiry.timeline || 'Not specified',
-      status: inquiry.status || 'PENDING_REVIEW',
-      assignedArchitect: inquiry.assignedArchitect,
-      slaResponseHours: inquiry.slaResponseHours,
-      createdAt: inquiry.createdAt,
-      storageMode: inquiry.storageMode,
-    }
-
-    return res.status(200).json({
-      success: true,
-      statusCode: 200,
-      inquiry: sanitizedRecord,
-    })
-  } catch (error) {
-    next(error)
-  }
-})
-

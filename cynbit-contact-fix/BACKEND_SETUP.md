@@ -103,33 +103,16 @@ Validates, normalizes, and stores an enterprise architectural discovery enquiry.
 
 ---
 
-### 2.3 `GET /api/inquiries/:referenceId`
-Secure public status lookup for an existing enquiry.
+### 2.3 Inquiry Reference IDs & Decommissioned Public Lookup
 
-**Security & Privacy Features:**
-- Validates reference ID format (`CYN-YYYYMMDD-XXXXXX`).
-- Rate-limited per IP.
-- **Strict Zero-PII Policy:** Explicitly redacts all personal contact information (email, phone number, full name, and IP address) to prevent public lead harvesting.
+**Security Architecture Update:**
+The public lookup endpoint `GET /api/inquiries/:referenceId` has been **decommissioned (returns HTTP 404)** to protect prospective client metadata (project title, engagement stream, tech stack, timeline, and staff assignment).
 
-**Response (200 OK):**
-```json
-{
-  "success": true,
-  "statusCode": 200,
-  "inquiry": {
-    "referenceId": "CYN-20261101-A9E24F",
-    "engagementStream": "Autonomous AI Agents",
-    "projectTitle": "Enterprise RAG Pipeline & Multi-Agent Orchestrator",
-    "techStack": ["Next.js", "Python", "PostgreSQL", "Docker"],
-    "timeline": "3 - 6 Months",
-    "status": "PENDING_REVIEW",
-    "assignedArchitect": "Lead AI & LLM Systems Architect",
-    "slaResponseHours": 24,
-    "createdAt": "2026-11-01T15:30:00.000Z",
-    "storageMode": "local-fallback"
-  }
-}
-```
+**Reference ID Security Standards:**
+- **Cryptographic Entropy:** Generated using 16 cryptographically random bytes (`crypto.randomBytes(16)` = 32 uppercase hexadecimal characters = 128 bits of entropy) formatted as `CYN-YYYYMMDD-[32-HEX-CHARS]`.
+- **Acknowledgement Only:** Reference IDs are issued exclusively as client confirmation receipts returned upon submission via `POST /api/inquiries`.
+- **Non-Credential Status:** Reference IDs are strictly customer reference numbers and are **never** treated as bearer credentials or authentication tokens.
+- **Future Portal Tracking:** Any future self-service status lookup MUST use an independent secure verification mechanism (e.g. email-verified OTP magic link or authenticated portal login).
 
 ---
 
@@ -199,7 +182,7 @@ npm test
   - `GET /api/health` diagnostic validation.
   - `POST /api/inquiries` clean submission, Zod schema validation, honeypot decoy rejection (`400 SECURITY_GATEWAY`), and malformed JSON handling.
   - Server-side sliding-window rate limiting (`429 RATE_LIMIT_EXCEEDED`).
-  - `GET /api/inquiries/:referenceId` PII redaction security audit.
+  - `GET /api/inquiries/:referenceId` decommission verification (asserts HTTP 404 with zero data leakage).
   - Internal server exception handling (zero stack trace leakage).
 - **`test/draftStorage.test.js`**: LocalStorage draft debouncing, schema v2 migration, corrupted JSON fallback.
 - **`test/antiSpam.test.js`**: Honeypot decoy and progressive speed trap timing.

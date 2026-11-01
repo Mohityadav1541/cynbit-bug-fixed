@@ -110,26 +110,16 @@ export async function submitInquiryLive(payload, options = {}) {
 }
 
 /**
- * Fetch public inquiry status by reference ID.
+ * SECURITY NOTE:
+ * `lookupInquiryByReference()` has been removed.
+ * Public GET /api/inquiries/:referenceId is decommissioned to prevent unauthorized
+ * exposure of project metadata, technology stacks, timelines, and staff assignments.
+ * Reference IDs serve exclusively as client confirmation receipts.
  *
- * @param {string} referenceId - CYN-YYYYMMDD-XXXXXX
- * @returns {Promise<Object>}
+ * Future Architecture Requirement:
+ * If a self-service inquiry status portal is introduced in the future, it must
+ * employ an independent, authenticated verification mechanism (such as email OTP
+ * magic link verification or session-authenticated client portal) rather than
+ * public unauthenticated reference ID lookup.
  */
-export async function lookupInquiryByReference(referenceId) {
-  try {
-    const res = await fetch(`${API_BASE_URL}/inquiries/${encodeURIComponent(referenceId)}`)
-    const data = await res.json()
-    return {
-      ok: res.ok,
-      statusCode: res.status,
-      data,
-    }
-  } catch (err) {
-    return {
-      ok: false,
-      statusCode: 0,
-      error: err.message,
-    }
-  }
-}
 

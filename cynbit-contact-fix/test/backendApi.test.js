@@ -20,6 +20,7 @@ describe('Cynbit Backend Express API Integration Tests', () => {
 
   after(async () => {
     await new Promise((resolve) => server.close(resolve))
+    await inquiryRepository.close()
   })
 
   // Helper to reset rate limits before tests
@@ -72,7 +73,8 @@ describe('Cynbit Backend Express API Integration Tests', () => {
 
     assert.equal(data.success, true)
     assert.equal(data.statusCode, 201)
-    assert.match(data.referenceId, /^CYN-\d{8}-[A-F0-9]{6}$/)
+    // Verify reference ID uses at least 16 cryptographically random bytes (32 hex characters = 128 bits entropy)
+    assert.match(data.referenceId, /^CYN-\d{8}-[A-F0-9]{32}$/)
     assert.equal(data.assignedArchitect, 'Lead AI & LLM Systems Architect')
     assert.equal(data.slaResponseHours, 24)
     assert.ok(['local-fallback', 'postgresql'].includes(data.storageMode))
@@ -185,7 +187,7 @@ describe('Cynbit Backend Express API Integration Tests', () => {
     assert.ok(throttledRes.headers.get('retry-after'))
   })
 
-  test('7. GET /api/inquiries/:referenceId: securely looks up inquiry without leaking PII', async () => {
+  test('7. Security: GET /api/inquiries/:referenceId is decommissioned and returns 404 (no public inquiry lookup)', async () => {
     resetRateLimits()
 
     // Create an inquiry first
@@ -197,37 +199,38 @@ describe('Cynbit Backend Express API Integration Tests', () => {
     const createData = await createRes.json()
     const refId = createData.referenceId
 
-    // Public lookup
+    // 1. Verify GET /api/inquiries/:referenceId returns 404 Not Found
     const lookupRes = await fetch(`${baseUrl}/api/inquiries/${refId}`)
-    assert.equal(lookupRes.status, 200)
+    assert.equal(lookupRes.status, 404)
     const lookupData = await lookupRes.json()
+    assert.equal(lookupData.errorType, 'NOT_FOUND')
 
-    assert.equal(lookupData.success, true)
-    assert.equal(lookupData.inquiry.referenceId, refId)
-    assert.equal(lookupData.inquiry.projectTitle, validPayload.projectTitle)
-    assert.equal(lookupData.inquiry.status, 'PENDING_REVIEW')
-
-    // CRITICAL SECURITY ASSERTION: Zero PII Exposure
-    assert.equal(lookupData.inquiry.email, undefined)
-    assert.equal(lookupData.inquiry.phone, undefined)
-    assert.equal(lookupData.inquiry.fullName, undefined)
-    assert.equal(lookupData.inquiry.ipAddress, undefined)
+    // 2. CRITICAL SECURITY ASSERTION: No confidential enquiry data can be obtained through public APIs
+    assert.equal(lookupData.inquiry, undefined)
+    assert.equal(lookupData.projectTitle, undefined)
+    assert.equal(lookupData.projectDescription, undefined)
+    assert.equal(lookupData.techStack, undefined)
+    assert.equal(lookupData.timeline, undefined)
+    assert.equal(lookupData.status, undefined)
+    assert.equal(lookupData.assignedArchitect, undefined)
+    assert.equal(lookupData.email, undefined)
+    assert.equal(lookupData.fullName, undefined)
+    assert.equal(lookupData.phone, undefined)
   })
 
-  test('8. GET /api/inquiries/:referenceId: returns 400 on invalid format and 404 on unknown ID', async () => {
+  test('8. Security: arbitrary or guessed reference IDs return 404 without leaking metadata', async () => {
     resetRateLimits()
 
-    // Bad format
+    // Arbitrary format returns 404
     const badFormatRes = await fetch(`${baseUrl}/api/inquiries/invalid-format`)
-    assert.equal(badFormatRes.status, 400)
-    const badData = await badFormatRes.json()
-    assert.equal(badData.errorType, 'INVALID_REFERENCE_ID')
+    assert.equal(badFormatRes.status, 404)
 
-    // Well-formed but non-existent
-    const notFoundRes = await fetch(`${baseUrl}/api/inquiries/CYN-20261101-999999`)
+    // Guessed 16-byte reference ID returns 404
+    const notFoundRes = await fetch(`${baseUrl}/api/inquiries/CYN-20261101-0123456789ABCDEF0123456789ABCDEF`)
     assert.equal(notFoundRes.status, 404)
     const notFoundData = await notFoundRes.json()
-    assert.equal(notFoundData.errorType, 'INQUIRY_NOT_FOUND')
+    assert.equal(notFoundData.errorType, 'NOT_FOUND')
+    assert.equal(notFoundData.inquiry, undefined)
   })
 
   test('9. Security: 404 route returns sanitized JSON without stack traces', async () => {
