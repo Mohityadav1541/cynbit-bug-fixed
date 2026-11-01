@@ -13,13 +13,24 @@ node_modules/
 # Production build artifacts
 dist/
 dist-ssr/
+build/
 *.local
 
 # Environment variables & secrets
 .env
 .env.*
 !.env.example
+
+# Test coverage
+coverage/
+
+# Deployment & frameworks
+.vercel/
+
+# Local database & development data
 server/data/*.json
+*.sqlite
+*.sqlite3
 
 # Operating System & Editor artifacts
 .DS_Store

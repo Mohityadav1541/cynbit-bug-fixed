@@ -1,11 +1,33 @@
 # Node dependencies
 node_modules/
+node_modules
+
+# Production build artifacts
 dist/
-.DS_Store
+dist
+build/
+build
 
 # Environment variables & secrets
 .env
 .env.*
 !.env.example
+
+# Logs & debugging
 *.log
 
+# Test coverage
+coverage/
+coverage
+
+# Deployment & frameworks
+.vercel/
+.vercel
+
+# Local database & development data
+server/data/*.json
+*.sqlite
+*.sqlite3
+
+# Operating System & IDE artifacts
+.DS_Store
