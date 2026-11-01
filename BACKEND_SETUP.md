@@ -180,7 +180,7 @@ The public lookup endpoint `GET /api/inquiries/:referenceId` has been **decommis
 ## 3. Storage Layer Architecture & Production Guardrails
 
 ### 3.1 PostgreSQL Database Layer (`pg.Pool`)
-The backend database access layer is built directly using the official `pg` (Node-PostgreSQL) package with 100% parameterized SQL:
+The backend database access layer is built directly using the official `pg` (Node-PostgreSQL) package with parameterized SQL (`$1, $2, ...`):
 - **Connection Pool:** Initialized via `new pg.Pool()` with explicit timeouts:
   - `connectionTimeoutMillis: 5000` (5-second connection acquisition timeout).
   - `idleTimeoutMillis: 30000` (30-second idle client reap).

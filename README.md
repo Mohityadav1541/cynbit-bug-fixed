@@ -10,14 +10,14 @@
 
 ## 1. Project Introduction
 
-This repository contains an independent, production-grade working prototype engineered to solve critical architectural, user experience, reliability, and security bottlenecks discovered on Cynbit Technologies' production website (`https://www.cynbit.in`). 
+This repository contains an independent engineering working prototype developed as part of an intern assessment to evaluate and propose optimizations for architectural, user experience, reliability, and security patterns observed on Cynbit Technologies' public website (`https://www.cynbit.in`). Cynbit Technologies' production systems were neither modified nor directly accessed. 
 
 Cynbit is an elite digital architecture firm headquartered in Jaipur, Rajasthan, specializing in **Autonomous AI Agents, custom software development, cloud infrastructure, and the BitElevate training ecosystem**. The company's digital presence demands an enterprise-caliber discovery and lead conversion pipeline.
 
 This project delivers:
 1. **The Architecture Discovery Engine**: A high-conversion, multi-step interactive scoping interface replacing generic contact forms with discipline selection, timeline scoping, budget brackets, and technology stack estimation.
 2. **Resilient Asynchronous Submission Pipeline**: Guaranteed UI recovery across network drops, HTTP 429 rate limits, HTTP 500 server crashes, and client offline states.
-3. **Dual API Architecture**: A production-grade Express REST backend connected to PostgreSQL (Neon Cloud) alongside an interactive laboratory simulator harness for testing edge conditions.
+3. **Dual API Architecture**: An Express REST backend connected to PostgreSQL (Neon Cloud) alongside an interactive reviewer simulator harness for testing edge conditions.
 4. **Interactive Technical Audit & Decompiled Code Diff Inspector**: Built-in developer tools demonstrating the production bug, the exact fix, and verified audit findings.
 
 ---
@@ -115,13 +115,14 @@ The **Cynbit Architecture Discovery Engine** addresses every layer of the inquir
   - CSS-hidden honeypot trap (`website_url_hp`, hidden with `position: absolute; left: -9999px; tabIndex: -1; aria-hidden="true"`).
   - Submission timing heuristic flagging submissions completed in under 2.0 seconds.
   - Client-side token bucket rate limiter (3 submissions/hour) paired with authoritative Express sliding-window IP rate limiting.
-- **100% WCAG 2.1 AA Accessibility Semantics**:
+- **WCAG 2.1 AA Aligned Accessibility Semantics**:
   - Deterministic `<label htmlFor="...">` to `<input id="...">` mapping across all fields.
   - Live assertive validation announcements (`role="alert"`, `aria-live="assertive"`).
   - High-contrast `:focus-visible:ring-2` focus rings and full keyboard navigation (arrow keys on radio options, `Escape` on modals).
   - Respects `@media (prefers-reduced-motion: reduce)`.
 - **Interactive Developer Test Harness**:
   - Live simulator toggle: 200 OK, Network Drop, Server 500, Slow 3G (3.5s delay), Rate Limited 429.
+  - Dedicated reviewer mode enabled via `?reviewer=1` or footer toggle, isolating developer controls from standard customer view.
   - Live Event Stream inspector reproducing the legacy unhandled rejection bug side-by-side with the improved pattern.
 
 ---
@@ -137,13 +138,13 @@ The **Cynbit Architecture Discovery Engine** addresses every layer of the inquir
 - **Linter:** oxlint 1.89 (High-performance Rust-based linter)
 
 ### Backend:
-- **Runtime:** Node.js (v20+ ESM)
+- **Runtime:** Node.js (v20+ / v26 ESM)
 - **Server:** Express.js 5.3
 - **Security:** Helmet 8.3, CORS 2.8
 - **Validation:** Zod 4.6
-- **Database Driver:** pg 8.23 (Client connection pool)
-- **ORM:** Prisma 7.10 / 8.0 Client
-- **Database:** PostgreSQL on Neon Cloud (with automated Local JSON fallback store)
+- **Database Access:** `pg` (Node-PostgreSQL `pg.Pool`) with parameterized SQL queries (`$1, $2, ...`)
+- **Schema Reference:** Optional Prisma schema (`prisma/schema.prisma`) for declarative data modeling
+- **Database:** PostgreSQL on Neon Cloud (with automated Local JSON fallback store for dev/test)
 
 ---
 
@@ -302,7 +303,7 @@ cp .env.example .env
 | `PORT` | Express server port | `5001` |
 | `NODE_ENV` | Environment (`development`, `production`, `test`) | `development` |
 | `CORS_ORIGIN` | Allowed cross-origin frontend URL | `http://localhost:5173` |
-| `DATABASE_URL` | PostgreSQL connection string (Prisma / Neon Cloud) | Optional (falls back to local JSON store) |
+| `DATABASE_URL` | PostgreSQL connection string (`pg.Pool` / Neon Cloud) | Optional (falls back to local JSON store in dev/test) |
 | `RATE_LIMIT_WINDOW_MS` | Sliding window duration in milliseconds | `900000` (15 minutes) |
 | `RATE_LIMIT_MAX_REQUESTS` | Allowed inquiries per IP per window | `5` |
 | `VITE_API_URL` | Base API endpoint for Vite client | `http://localhost:5001/api` |
@@ -315,26 +316,28 @@ cp .env.example .env
 
 The project uses Node.js's built-in native test runner (`node:test`, `node:assert/strict`) with zero external testing dependencies.
 
-### Run All 72 Automated Tests:
+### Run All 101 Automated Tests:
 ```bash
-npm test -- --run
+npm test --prefix cynbit-contact-fix
 ```
 
 ### Run Linter (`oxlint`):
 ```bash
-npm run lint
+npm run lint --prefix cynbit-contact-fix
 ```
-*Zero warnings and zero errors across 46 files.*
+*Zero errors across 48 files.*
 
 ### Verified Test Suites:
 1. `test/antiSpam.test.js`: Honeypot detection, speed trap timing, rolling rate-limit window.
-2. `test/backendApi.test.js`: Health diagnostics, inquiry creation, 400 validation, 413 payload size limits, 429 rate limiting, 500 error resilience, Helmet headers, CORS restrictions.
-3. `test/draftStorage.test.js`: PII isolation, schema versioning, draft purging, corrupted JSON recovery, QuotaExceededError handling.
+2. `test/backendApi.test.js`: Health diagnostics (`GET /api/health/live`, `GET /api/health/ready`), inquiry creation, 400 validation, 413 payload size limits, 429 rate limiting, proxy spoof protection, 500/503 error resilience, Helmet headers, CORS restrictions.
+3. `test/draftStorage.test.js`: PII isolation, schema versioning, 14-day TTL expiration, draft purging, corrupted JSON recovery, QuotaExceededError handling.
 4. `test/originalFormSimulation.test.js`: Reproduction of production bare await lockup vs resilient try/catch/finally.
 5. `test/simulatorModes.test.js`: 200 OK, Network drop, Server 500, Slow 3G delay, Rate limited 429.
-6. `test/qaTestSuite.test.js`: Comprehensive 32-test QA verification across Form, Async, Draft, A11y, Security, and Breakpoints.
+6. `test/reviewerMode.test.js`: Reviewer mode detection (`?reviewer=1`), local storage persistence, synthetic demo identity validation.
+7. `test/apiClientAndSanitization.test.js`: Health check timeout with AbortController, malformed JSON handling, live submission error classification, plain-text sanitization.
+8. `test/qaTestSuite.test.js`: Comprehensive 32-test QA verification across Form, Async, Draft, A11y, Security, and Breakpoints.
 
-Detailed execution results are documented in [`TESTING_REPORT.md`](file:///Users/mohit/Desktop/coding/cynbit%20project%20/cynbit-contact-fix/TESTING_REPORT.md).
+Detailed execution results are documented in [`cynbit-contact-fix/TESTING_REPORT.md`](cynbit-contact-fix/TESTING_REPORT.md).
 
 ---
 
@@ -355,9 +358,10 @@ Detailed execution results are documented in [`TESTING_REPORT.md`](file:///Users
 
 ---
 
-## 14. Known Limitations
+## 14. Known Limitations & Architecture Boundaries
 
-1. **Independent Prototype:** This project is an independent proof-of-concept and technical proposal. It does not modify or access Cynbit's proprietary internal production systems.
-2. **PostgreSQL vs Local Storage:** In the absence of a live PostgreSQL database connection, the Express server seamlessly falls back to local single-node JSON storage (`server/data/inquiries.json`). Production multi-instance deployments require PostgreSQL with connection pooling.
-3. **Client-Side vs Server-Side Rate Limiting:** The client-side rate limiter (3 submissions/hour) provides immediate feedback for genuine visitors, while the Express sliding-window middleware provides authoritative defense against automated request floods.
-4. **Third-Party Email Relay:** Real-world dispatches to Cynbit's founding architects require configuring transactional email providers (e.g., AWS SES, Resend) using server-side credentials.
+1. **Independent Assessment Prototype:** This project is an independent proof-of-concept and technical proposal developed for an engineering evaluation. Cynbit Technologies' production systems were neither modified nor directly accessed.
+2. **Local JSON Storage Limits:** In the absence of a live PostgreSQL database connection, the Express server falls back to single-node file storage (`server/data/inquiries.json`) in development and test environments. Local JSON storage lacks transactional isolation and concurrency locks; in production (`NODE_ENV=production`), the backend strictly refuses local file fallback and returns controlled HTTP 503 responses if PostgreSQL is unavailable.
+3. **In-Memory Rate Limiting Limits:** The default rate limiter tracks IP addresses using an in-memory `Map`. Counters are process-local and do not synchronize across horizontally scaled multi-instance clusters or survive process restarts. Production multi-node deployments require a distributed Redis-backed store (as detailed in [`cynbit-contact-fix/BACKEND_SETUP.md`](cynbit-contact-fix/BACKEND_SETUP.md)).
+4. **Client-Side Bot Protection Limits:** The honeypot decoy (`website_url_hp`) and submission speed trap (<2s) provide lightweight client-side defense-in-depth against simple automated scrapers. They do not replace authoritative server-side IP rate limiting or cryptographic edge verification (such as Cloudflare Turnstile).
+5. **Third-Party Email Relay:** Real-world dispatches to Cynbit's founding architects require configuring transactional email providers (e.g., AWS SES, Resend) using server-side credentials.

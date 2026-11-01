@@ -7,7 +7,6 @@ let pgPool = null
 let isDbConnected = false
 let dbDiagnosticsInfo = null
 let connectionError = null
-let isVerifyingConnection = false
 
 /**
  * Strips sensitive credentials (passwords) from connection strings before logging.
@@ -82,7 +81,6 @@ export async function verifyConnection(pool = pgPool) {
     return false
   }
 
-  isVerifyingConnection = true
   let client
   try {
     client = await pool.connect()
@@ -141,7 +139,6 @@ export async function verifyConnection(pool = pgPool) {
         // ignore
       }
     }
-    isVerifyingConnection = false
   }
 }
 

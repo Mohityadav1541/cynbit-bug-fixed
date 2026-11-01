@@ -46,7 +46,7 @@ healthRouter.get('/health/ready', async (req, res) => {
       environment: readiness.environment,
       timestamp: new Date().toISOString(),
     })
-  } catch (_err) {
+  } catch {
     return res.status(503).json({
       status: 'not_ready',
       storage: 'unavailable',

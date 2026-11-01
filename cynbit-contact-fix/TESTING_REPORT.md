@@ -5,17 +5,17 @@
 **Target System:** Cynbit Technologies Discovery Engine (`cynbit-contact-fix`)  
 **Backend:** Node.js Express 5.3, PostgreSQL (Neon Cloud) / Local JSON Fallback  
 **Frontend:** React 19, Tailwind CSS 4, Vite 8  
-**Total Automated Tests Executed:** 72  
-**Total Passed:** 72  
+**Total Automated Tests Executed:** 101  
+**Total Passed:** 101  
 **Total Failed:** 0  
 **Linter Status (oxlint):** 0 errors, 0 warnings across 46 files  
-**Production Build Status:** Passed (`dist` generated in 128ms)  
+**Production Build Status:** Passed (`dist` generated successfully)  
 
 ---
 
 ## Executive Summary
 
-As a QA engineer, a full-scope functional, asynchronous, security, accessibility, persistence, and responsiveness audit was performed across the complete Cynbit Architecture Discovery Engine. All 72 test specifications across 6 distinct suites were executed directly against the live application runtime, Express REST server, and PostgreSQL storage adapter. Zero regressions were detected.
+As a QA engineer, a full-scope functional, asynchronous, security, accessibility, persistence, and responsiveness audit was performed across the Cynbit Architecture Discovery Engine prototype. All 101 test specifications across 8 distinct suites were executed directly against the application runtime, Express REST server, and PostgreSQL storage adapter. Zero regressions were detected.
 
 ---
 
@@ -93,7 +93,7 @@ As a QA engineer, a full-scope functional, asynchronous, security, accessibility
 | **SEC-06** | Authoritative Server Rate Limiting | Express sliding-window middleware throttles requests exceeding configured threshold with HTTP 429. | After 5 requests within sliding window, subsequent request returned HTTP 429 with `Retry-After` header. | **PASS** | None |
 | **SEC-07** | CORS Origin Hardening | Requests from unauthorized cross-origin domains are blocked with HTTP 403 Forbidden. | Request with `Origin: https://malicious-attacker-site.com` blocked with HTTP 403 `CORS_FORBIDDEN`. | **PASS** | None |
 | **SEC-08** | HTTP Security Headers | Express responses include Helmet defensive headers (`X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`). | Verified active security headers across `/api/health` and `/api/inquiries`. | **PASS** | None |
-| **SEC-09** | Public Lookup Sanitization | Lookup endpoint `/api/inquiries/:referenceId` sanitizes PII and returns only non-sensitive architectural metadata. | Contact email, phone, and full name are redacted from lookup response; unknown IDs return 404 without database leaks. | **PASS** | None |
+| **SEC-09** | Decommissioned Public Lookup Endpoint | Lookup endpoint `/api/inquiries/:referenceId` is decommissioned to protect customer privacy and returns HTTP 404. | Endpoint responds with HTTP 404 `ENDPOINT_DECOMMISSIONED`; customer inquiry data is never exposed via public URL lookup. | **PASS** | None |
 
 ---
 
@@ -113,28 +113,29 @@ As a QA engineer, a full-scope functional, asynchronous, security, accessibility
 
 ```
 ✔ test/antiSpam.test.js (8 tests)
-✔ test/backendApi.test.js (13 tests)
+✔ test/backendApi.test.js (22 tests)
 ✔ test/draftStorage.test.js (10 tests)
 ✔ test/originalFormSimulation.test.js (3 tests)
-✔ test/simulatorModes.test.js (6 tests)
+✔ test/privacyMetadata.test.js (8 tests)
 ✔ test/qaTestSuite.test.js (32 tests)
+✔ test/rateLimiter.test.js (12 tests)
+✔ test/simulatorModes.test.js (6 tests)
 
-ℹ tests 72
+ℹ tests 101
 ℹ suites 8
-ℹ pass 72
+ℹ pass 101
 ℹ fail 0
 ℹ cancelled 0
 ℹ skipped 0
-ℹ duration_ms ~38,800ms
 ```
 
 ---
 
 ## 8. Remaining Considerations & Production Deployment Notes
 
-1. **Production PostgreSQL Cluster:** The Express backend is verified connected to the Neon PostgreSQL database (`neondb` on AWS US-East-2). For high-availability multi-region production, maintain the pooler connection string and ensure `sslmode=verify-full` is used in newer libpq drivers.
+1. **Production PostgreSQL Cluster:** The Express backend connects to PostgreSQL using parameterized SQL via `pg.Pool`. For high-availability multi-region production, maintain the pooler connection string and ensure `sslmode=verify-full` is used in newer libpq drivers.
 2. **Third-Party Email Relay:** If Cynbit configures Resend or AWS SES for real-time architect email dispatches in production, ensure the SMTP credentials reside strictly in server-side environment variables and are never bundled into client Vite builds.
 3. **Draft Privacy:** Draft persistence strictly isolates scoping metadata and never persists client PII, passwords, or tokens to LocalStorage.
 
-**Conclusion:** The Cynbit Architecture Discovery Engine has completed rigorous automated QA testing, achieving a **100% pass rate** across all functional, security, accessibility, persistence, and performance dimensions.
+**Conclusion:** The Cynbit Architecture Discovery Engine has completed rigorous automated QA testing, with all 101 automated test cases passing across functional, security, accessibility, persistence, and error handling suites.
 

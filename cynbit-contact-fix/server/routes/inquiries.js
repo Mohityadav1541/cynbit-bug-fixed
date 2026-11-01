@@ -1,7 +1,7 @@
 import express from 'express'
 import crypto from 'crypto'
 import { inquirySubmissionSchema } from '../validators/inquirySchema.js'
-import { inquiryRateLimiter, getClientIp } from '../middleware/rateLimiter.js'
+import { inquiryRateLimiter } from '../middleware/rateLimiter.js'
 import { inquiryRepository } from '../storage/inquiryRepository.js'
 
 export const inquiriesRouter = express.Router()

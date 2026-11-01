@@ -16,7 +16,7 @@
 
 ## 1. Executive Summary
 
-This comprehensive security audit evaluated 15 core architectural domains across our client and server prototype. All identified vulnerabilities have been systematically remediated and verified with automated test suites (**40 of 40 tests passing**).
+This comprehensive security audit evaluated 15 core architectural domains across our client and server prototype. All identified vulnerabilities have been systematically remediated and verified with automated test suites (**101 automated tests across 8 test suites passing**).
 
 ### High-Level Security Posture Matrix
 
@@ -26,7 +26,7 @@ This comprehensive security audit evaluated 15 core architectural domains across
 | **2. Authorization & PII Protection** | Potential PII leakage on lookup | Strict field-level redaction | High |
 | **3. Server Input Validation** | Client-only checks | Authoritative Zod runtime validation | Critical |
 | **4. Output Encoding** | Unescaped entity risks | Context-aware HTML entity sanitization | Medium |
-| **5. SQL Injection Prevention** | Raw string risks | 100% Parameterized queries (`$1..$n`) | Critical |
+| **5. SQL Injection Prevention** | Raw string risks | Strictly Parameterized queries via `pg.Pool` (`$1..$n`) | Critical |
 | **6. Cross-Site Scripting (XSS)** | Injection via text inputs | Multi-pass regex tag stripping + JSX | High |
 | **7. CORS Policy** | Permissive fallback | Strict whitelist; blocks untrusted origins | High |
 | **8. Rate Limiting** | Client-side only (bypassable) | Sliding window on Express (RFC headers) | High |
@@ -92,7 +92,7 @@ This comprehensive security audit evaluated 15 core architectural domains across
 - **Category:** SQL Injection Prevention
 - **Severity:** Critical
 - **Evidence:** Assembling SQL query strings with string interpolation (`SELECT * FROM inquiries WHERE id = '${id}'`) exposes databases to catastrophic exfiltration or data destruction.
-- **Fix Implemented:** Implemented 100% parameterized queries in `server/storage/inquiryRepository.js` using positional placeholders (`$1, $2, ... $22`). The relational database driver (`pg.Pool`) escapes and treats all user inputs strictly as typed parameters, completely neutralizing SQL injection vectors.
+- **Fix Implemented:** Implemented parameterized queries in `server/storage/inquiryRepository.js` using positional placeholders (`$1, $2, ... $22`). The relational database driver (`pg.Pool`) escapes and treats all user inputs strictly as typed parameters, completely neutralizing SQL injection vectors.
 - **Remaining Risk:** None for current queries. Future database operations must adhere strictly to parameterized prepared statements.
 
 ---
@@ -178,7 +178,7 @@ This comprehensive security audit evaluated 15 core architectural domains across
 - **Fix Implemented:**
   1. Configured `.env` to read credentials at runtime via `dotenv`.
   2. Added `.env`, `.env.local`, `.env.*.local`, and `server/data/*.json` to `.gitignore`.
-  3. Created a safe, sanitized [`.env.example`](file:///Users/mohit/Desktop/coding/cynbit%20project%20/cynbit-contact-fix/.env.example) with placeholder connection strings.
+  3. Created a safe, sanitized [`.env.example`](./.env.example) with placeholder connection strings.
 - **Remaining Risk:** Developers must maintain operational discipline never to commit production `.env` files.
 
 ---
@@ -208,7 +208,7 @@ This comprehensive security audit evaluated 15 core architectural domains across
 - **Category:** Supply Chain & Third-Party Dependencies
 - **Severity:** Medium
 - **Evidence:** High package counts in `node_modules` increase exposure to known CVEs and malicious transitive dependency updates.
-- **Fix Implemented:** Audited dependencies. The application utilizes a lightweight dependency footprint (`express`, `zod`, `pg`, `cors`, `helmet`, `dotenv`, `@prisma/client`).
+- **Fix Implemented:** Audited dependencies. The application utilizes a lightweight dependency footprint (`express`, `zod`, `pg`, `cors`, `helmet`, `dotenv`; `prisma` is provided as an optional schema definition tool in devDependencies while runtime persistence uses `pg.Pool`).
 - **Remaining Risk:** Standard Node.js ecosystem vulnerability monitoring required. Continuous CI scanning with `npm audit` is recommended.
 
 ---
@@ -258,7 +258,7 @@ This comprehensive security audit evaluated 15 core architectural domains across
   2. **Transient Rate-Limiting Only:** Client IP addresses are evaluated strictly in volatile in-memory or Redis sliding-window cache to enforce rate limits (5 requests / 15 minutes) and are **never** persisted to customer records or logs.
   3. **Zero Network Identifiers in Public APIs:** Public API responses (`POST /api/inquiries`, `GET /api/health/*`) strictly never expose client IP addresses or user agents.
   4. **Strict Payload Logging Prohibition:** Server error handlers and logging hooks are prohibited from printing complete request payloads or sensitive contact fields (`fullName`, `email`, `phone`, `projectDescription`).
-  5. **Scoping-Only Browser Drafts:** Client-side draft persistence (`extractScopingFields`) strictly whitelists project parameters (stream, title, tech stack, timeline, budget) and enforces 100% exclusion of personal contact identifiers.
+  5. **Scoping-Only Browser Drafts:** Client-side draft persistence (`extractScopingFields`) strictly whitelists project parameters (stream, title, tech stack, timeline, budget) and enforces strict exclusion of personal contact identifiers.
   6. **Clear UI Notice & Draft Deletion:** Displayed a prominent privacy notice on browser draft persistence in `SummarySidebar` and `Step5Contact`, accompanied by a one-click **Clear Draft** button to instantly purge LocalStorage.
   7. **Documented Retention & Erasure Policy:** Established a 90-day retention schedule for non-converting inquiries and provided a documented erasure channel (`opportunities@cynbit.in` / `privacy@cynbit.in`).
   8. **Statutory Compliance Disclaimer:** Explicitly documented that while the system follows defensive data minimization principles, formal statutory legal compliance (e.g., GDPR, CCPA, DPDP Act) requires an independent organizational legal review.
@@ -324,7 +324,7 @@ services:
     name: cynbit-discovery-api
     runtime: node
     plan: starter
-    buildCommand: npm install && npx prisma db push
+    buildCommand: npm install
     startCommand: npm run server
     envVars:
       - key: NODE_ENV

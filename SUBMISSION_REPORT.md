@@ -17,7 +17,7 @@ Cynbit's positioning as an elite digital architecture firm—specializing in **A
 
 The audit identified a critical reliability flaw in Cynbit's primary conversion pipeline (`/contact`): an **unhandled Next.js Server Action promise rejection** that permanently locks the UI in a loading state whenever a user experiences network fluctuations, timeouts, or server exceptions. Furthermore, the existing form suffers from zero draft persistence, WCAG 2.1 AA accessibility non-compliance, absence of bot mitigation, and low inquiry qualification depth.
 
-To resolve these issues, I developed an independent, production-grade working prototype: the **Cynbit Architecture Discovery Engine**. This prototype replaces generic input fields with a multi-step project scoping interface, implements guaranteed `try...catch...finally` asynchronous error recovery, provides a layered anti-bot defense, integrates privacy-conscious LocalStorage draft persistence, adheres to 100% WCAG accessibility standards, and connects to a production-ready Express.js REST API with PostgreSQL persistence.
+To resolve these issues, I developed an independent engineering working prototype: the **Cynbit Architecture Discovery Engine**. This prototype replaces generic input fields with a multi-step project scoping interface, implements guaranteed `try...catch...finally` asynchronous error recovery, provides a layered anti-bot defense, integrates privacy-conscious LocalStorage draft persistence, follows WCAG 2.1 AA accessible design principles, and connects to an Express.js REST API with PostgreSQL persistence.
 
 ---
 
@@ -124,7 +124,7 @@ The prototype features a decoupled architecture supporting both laboratory simul
 
 ## F. Accessibility (WCAG 2.1 AA Compliance)
 
-Cynbit's production form failed basic WCAG compliance by omitting label-for and input-id associations. The prototype achieves 100% compliance:
+Cynbit's production form failed basic WCAG compliance by omitting label-for and input-id associations. The prototype aligns with WCAG 2.1 AA recommendations:
 
 1. **Deterministic Label Associations**:
    ```jsx
@@ -157,11 +157,11 @@ Cynbit's production form failed basic WCAG compliance by omitting label-for and 
 | Security Dimension | Implementation & Defense Mechanism |
 |---|---|
 | **Input Validation** | Dual-layer validation: Client-side RFC regex + Server-side Zod schema (`server/validators/inquirySchema.js`). |
-| **Output Encoding & XSS** | HTML entities sanitization (`sanitizeInput()`) neutralizing `<script>`, `onerror`, and iframe injections. |
+| **Output Encoding & XSS** | Plain text inputs are normalized with control character stripping and length bounds; React JSX text interpolation safely escapes all text nodes by default. |
 | **Public Route Decommissioning** | `GET /api/inquiries/:referenceId` decommissioned to eliminate public metadata exposure. No project titles, descriptions, tech stacks, timelines, or staff assignments are publicly readable. |
 | **Cryptographic Reference IDs** | Generated using at least 16 cryptographically random bytes (`crypto.randomBytes(16)` = 128 bits entropy, formatted as `CYN-YYYYMMDD-[32-hex-chars]`). Reference IDs serve strictly as client acknowledgement receipts and are never treated as authentication credentials. |
 | **Future Status Verification** | Any future self-service inquiry status tracking must use an independent, authenticated verification mechanism (e.g. time-limited cryptographic magic link verified against email ownership, or authenticated client portal session). |
-| **SQL Injection Prevention** | All database operations use parameterized queries via Prisma ORM / pg connection pool; zero string concatenation. |
+| **SQL Injection Prevention** | All database operations use strictly parameterized queries via `pg.Pool` (`$1, $2, ...`); zero string concatenation. |
 | **Payload Size Limiting** | Express body parser enforces a strict `50KB` limit (`express.json({ limit: '50kb' })`), rejecting bloated payloads with HTTP 413. |
 | **Authoritative Rate Limiting** | Sliding-window IP rate limiter (`server/middleware/rateLimiter.js`) with HTTP 429 and `Retry-After` headers. |
 | **CORS Origin Hardening** | Restricted to configured whitelist (`CORS_ORIGIN`); cross-origin requests from unauthorized origins return HTTP 403 `CORS_FORBIDDEN`. |
@@ -173,17 +173,19 @@ Cynbit's production form failed basic WCAG compliance by omitting label-for and 
 
 ## H. Testing & Simulation Verification
 
-The project includes 72 automated test specifications executed natively using Node.js's built-in test runner (`node:test`, `node:assert/strict`):
+The project includes 101 automated test specifications executed natively using Node.js's built-in test runner (`node:test`, `node:assert/strict`):
 
 ```
 ✔ test/antiSpam.test.js (8 tests)
-✔ test/backendApi.test.js (13 tests)
+✔ test/backendApi.test.js (22 tests)
 ✔ test/draftStorage.test.js (10 tests)
 ✔ test/originalFormSimulation.test.js (3 tests)
-✔ test/simulatorModes.test.js (6 tests)
+✔ test/privacyMetadata.test.js (8 tests)
 ✔ test/qaTestSuite.test.js (32 tests)
+✔ test/rateLimiter.test.js (12 tests)
+✔ test/simulatorModes.test.js (6 tests)
 
-ℹ tests 72 | suites 8 | pass 72 | fail 0 | cancelled 0 | skipped 0
+ℹ tests 101 | suites 8 | pass 101 | fail 0 | cancelled 0 | skipped 0
 ```
 
 ### Verified Scenarios:
@@ -249,11 +251,13 @@ The project includes 72 automated test specifications executed natively using No
 
 ---
 
-## K. Scope & Limitations
+## K. Scope & Technical Limits
 
 1. **Independent Assessment Prototype**: This implementation is an independent technical optimization proposal. It does not alter or access Cynbit's proprietary internal codebase, production DNS, or hosting infrastructure.
 2. **Transactional Email Relay**: In a full production deployment, Cynbit's founding architects would receive dispatches via transactional SMTP providers (e.g., AWS SES or Resend). In this prototype, inquiries are securely persisted to PostgreSQL and the local development store, returning a unique reference ID.
-3. **Database Fallback Mode**: If `DATABASE_URL` is omitted in development, the backend automatically engages the local JSON store (`server/data/inquiries.json`), ensuring reviewers can test the complete pipeline with zero initial cloud setup.
+3. **Local JSON Storage Limits**: The local file store (`server/data/inquiries.json`) is designed strictly as a single-process local development and test fallback when PostgreSQL is not configured. It lacks multi-process concurrency locks, ACID transactions, and horizontal replication. In production (`NODE_ENV=production`), silent fallback is explicitly disabled and unavailable PostgreSQL returns an HTTP 503 response.
+4. **In-Memory Rate Limiting Limits**: The default rate limiter uses a process-local in-memory sliding window Map. For multi-instance clustered or auto-scaled deployments, a shared Redis store (supported via `REDIS_URL` in `rateLimiter.js`) must be configured to synchronize counters across nodes.
+5. **Client-Side Security Limits**: Client-side form throttling, speed traps, and hidden honeypot fields serve as defense-in-depth UX controls to filter casual scripts. Authoritative security enforcement must reside at the edge (Cloudflare WAF / Turnstile) and backend API layers.
 
 ---
 

@@ -28,7 +28,7 @@ In this assessment prototype, anti-spam protections are demonstrated through a m
 User / Bot Influx ──► [1] Invisible Honeypot Trap (`website_url_hp`)         │
                     │     • Positioned offscreen (-9999px)                   │
                     │     • aria-hidden="true", tabIndex={-1}                │
-                    │     • Traps 95%+ of automated web scrapers             │
+                    │     • Traps automated scripts populating hidden fields │
                     ├────────────────────────────────────────────────────────┤
                     │ [2] Submission Timing Verification                     │
                     │     • Evaluates elapsed time since form load           │
@@ -115,8 +115,8 @@ export const inquirySubmissionLimiter = rateLimit({
   legacyHeaders: false,
   statusCode: 429,
   keyGenerator: (req) => {
-    // Respect reverse proxy headers (Cloudflare, AWS CloudFront, NGINX)
-    return req.headers['cf-connecting-ip'] || req.headers['x-forwarded-for']?.split(',')[0] || req.ip;
+    // Obtain client IP using req.ip after Express trust proxy configuration
+    return req.ip;
   },
   handler: (req, res) => {
     res.status(429).json({

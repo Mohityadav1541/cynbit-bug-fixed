@@ -45,7 +45,7 @@ class LocalDevelopmentStore {
 
   save(inquiry) {
     // DATA MINIMIZATION: Explicitly strip IP addresses, user agents, and honeypot tokens from records
-    const { ipAddress, userAgent, website_url_hp, ...sanitized } = inquiry || {}
+    const { ipAddress: _ipAddress, userAgent: _userAgent, website_url_hp: _website_url_hp, ...sanitized } = inquiry || {}
     const record = {
       ...sanitized,
       id: inquiry.id || `loc_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
