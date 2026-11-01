@@ -1,0 +1,38 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Inquiry {
+  id                    String   @id @default(uuid())
+  referenceId           String   @unique
+  engagementStream      String
+  projectTitle          String
+  projectDescription   String
+  businessObjective     String?
+  mainChallenges        String?
+  expectedFunctionality String?
+  techStack             String[]
+  timeline              String?
+  budgetRange           String?
+  fullName              String
+  email                 String
+  phone                 String?
+  company               String?
+  status                String   @default("PENDING_REVIEW")
+  assignedArchitect     String   @default("Principal Cloud & AI Architect")
+  slaResponseHours      Int      @default(24)
+  ipAddress             String?
+  userAgent             String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@index([referenceId])
+  @@index([email])
+  @@index([createdAt])
+}
+
