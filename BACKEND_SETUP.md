@@ -21,8 +21,65 @@ The Cynbit Architecture Discovery Engine uses a decoupled client-server architec
 
 ## 2. API Endpoints Specification
 
-### 2.1 `GET /api/health`
-Checks server uptime, health status, and active storage diagnostics.
+### 2.1 `GET /api/health/live` (Liveness Probe)
+Checks whether the Express Node.js process is alive and responding to HTTP requests.
+- **Purpose:** Used by container orchestrators (e.g., Kubernetes, AWS ECS, Docker Swarm) to determine if the container process has locked up or crashed and requires a process restart.
+- **Characteristics:** Zero database I/O, non-blocking, near-zero latency (<2ms).
+
+**Response (200 OK):**
+```json
+{
+  "status": "live",
+  "uptimeSeconds": 240,
+  "timestamp": "2026-11-01T20:25:00.000Z"
+}
+```
+
+---
+
+### 2.2 `GET /api/health/ready` (Readiness Probe)
+Checks whether the service can actively accept and persist inquiries.
+- **Purpose:** Used by load balancers, reverse proxies, and Kubernetes ingress controllers to determine if traffic should be routed to this instance.
+- **Storage Verification:** Actively validates the underlying storage layer:
+  - In **production (`NODE_ENV=production`)**: Strictly requires verified PostgreSQL connection. If PostgreSQL is offline, returns **HTTP 503**.
+  - In **development (`NODE_ENV=development` / `test`)**: Allows clearly identified local file storage (`server/data/inquiries.json`).
+- **Defensive Privacy Guarantee:** Strictly **never** exposes database passwords, connection strings, internal network details, database hostnames, or sensitive internal diagnostics.
+
+**Response (200 OK — Ready in Production):**
+```json
+{
+  "status": "ready",
+  "storage": "postgresql",
+  "environment": "production",
+  "timestamp": "2026-11-01T20:25:00.000Z"
+}
+```
+
+**Response (200 OK — Ready in Development):**
+```json
+{
+  "status": "ready",
+  "storage": "local-development",
+  "environment": "development",
+  "timestamp": "2026-11-01T20:25:00.000Z"
+}
+```
+
+**Response (503 Service Unavailable — Not Ready in Production):**
+```json
+{
+  "status": "not_ready",
+  "storage": "unavailable",
+  "environment": "production",
+  "error": "Primary database storage is unavailable.",
+  "timestamp": "2026-11-01T20:25:00.000Z"
+}
+```
+
+---
+
+### 2.3 `GET /api/health` (General Diagnostics)
+Backward-compatible endpoint providing high-level diagnostics.
 
 **Response (200 OK — Development Mode):**
 ```json
@@ -51,32 +108,9 @@ Checks server uptime, health status, and active storage diagnostics.
 }
 ```
 
-**Response (200 OK — Production Mode):**
-```json
-{
-  "status": "healthy",
-  "service": "Cynbit Architecture Discovery API",
-  "version": "1.0.0",
-  "uptimeSeconds": 1420,
-  "timestamp": "2026-11-01T15:30:00.000Z",
-  "environment": "production",
-  "storage": {
-    "mode": "postgresql",
-    "driver": "PostgreSQL Client Pool (pg)",
-    "connected": true,
-    "databaseConfigured": true,
-    "databaseHost": "ep-bitter-smoke.us-east-2.aws.neon.tech",
-    "databaseName": "neondb",
-    "localFallbackAllowed": false,
-    "environment": "production",
-    "limitations": null
-  }
-}
-```
-
 ---
 
-### 2.2 `POST /api/inquiries`
+### 2.4 `POST /api/inquiries`
 Validates, normalizes, and stores an enterprise architectural discovery enquiry.
 
 **Request Headers:**
@@ -239,7 +273,9 @@ npm test
 
 ### Test Coverage Highlights:
 - **`test/backendApi.test.js`**:
-  - `GET /api/health` diagnostic validation.
+  - `GET /api/health/live` liveness check (fast, non-blocking process health).
+  - `GET /api/health/ready` readiness check (validates database readiness; HTTP 503 on database drop without leaking credentials).
+  - `GET /api/health` backward-compatible diagnostics validation.
   - `POST /api/inquiries` clean submission, Zod schema validation, honeypot decoy rejection (`400 SECURITY_GATEWAY`), and malformed JSON handling.
   - Express environment-based proxy trust (`TRUST_PROXY`) and client IP spoof-prevention.
   - Sliding-window rate limiting (`429 RATE_LIMIT_EXCEEDED`) and Redis distributed store logic.
@@ -249,5 +285,57 @@ npm test
 - **`test/draftStorage.test.js`**: LocalStorage draft debouncing, schema v2 migration, corrupted JSON fallback.
 - **`test/antiSpam.test.js`**: Honeypot decoy and progressive speed trap timing.
 - **`test/simulatorModes.test.js`**: Developer test harness scenarios (200, 429, 500, Slow 3G, Network Drop).
-- **`test/qaTestSuite.test.js`**: 84-test comprehensive QA validation suite.
+- **`test/qaTestSuite.test.js`**: Full comprehensive QA validation suite.
+
+---
+
+## 6. Container & Cloud Deployment Architecture
+
+### 6.1 Liveness vs. Readiness Probes Distinction
+
+| Probe | Endpoint | Purpose | Trigger Action on Failure |
+| :--- | :--- | :--- | :--- |
+| **Liveness** | `GET /api/health/live` | Checks if Node.js/Express process event loop is active | **Restart Container:** Kills and restarts the hung container process |
+| **Readiness** | `GET /api/health/ready` | Checks if PostgreSQL can accept and persist new inquiries | **Remove from Traffic:** Stops routing ingress traffic until DB recovers |
+
+### 6.2 Kubernetes Deployment Manifest Example
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cynbit-discovery-api
+spec:
+  replicas: 3
+  template:
+    spec:
+      containers:
+        - name: api
+          image: cynbit-api:latest
+          ports:
+            - containerPort: 5001
+          env:
+            - name: NODE_ENV
+              value: "production"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: url
+          livenessProbe:
+            httpGet:
+              path: /api/health/live
+              port: 5001
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /api/health/ready
+              port: 5001
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 2
+```
 

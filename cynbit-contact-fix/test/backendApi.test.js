@@ -745,4 +745,154 @@ describe('Cynbit Backend Express API Integration Tests', () => {
       assert.equal(sanitizeConnectionUrl('not-a-valid-url'), '[REDACTED_INVALID_URL]')
     })
   })
+
+  /* ==========================================================================
+     SECTION 15: HEALTH PROBES: LIVENESS & READINESS ARCHITECTURE
+     ========================================================================== */
+  describe('15. Health Probes: Liveness (/api/health/live) & Readiness (/api/health/ready)', () => {
+    test('15.1 GET /api/health/live: returns lightweight 200 OK liveness probe without storage latency', async () => {
+      const res = await fetch(`${baseUrl}/api/health/live`)
+      assert.equal(res.status, 200)
+
+      const data = await res.json()
+      assert.equal(data.status, 'live')
+      assert.ok(typeof data.uptimeSeconds === 'number')
+      assert.ok(typeof data.timestamp === 'string')
+
+      // Liveness probe must NOT contain storage or database overhead
+      assert.equal(data.storage, undefined)
+      assert.equal(data.database, undefined)
+    })
+
+    test('15.2 GET /api/health/ready in development: returns 200 OK with local-development storage', async () => {
+      const originalEnv = config.NODE_ENV
+      const originalConnected = inquiryRepository.isDbConnected()
+
+      try {
+        config.NODE_ENV = 'development'
+        inquiryRepository.setIsDbConnected(false)
+
+        const res = await fetch(`${baseUrl}/api/health/ready`)
+        assert.equal(res.status, 200)
+
+        const data = await res.json()
+        assert.equal(data.status, 'ready')
+        assert.equal(data.storage, 'local-development')
+        assert.equal(data.environment, 'development')
+        assert.ok(data.timestamp)
+
+        // Security check: Zero sensitive internal network details or credentials
+        assert.equal(data.host, undefined)
+        assert.equal(data.password, undefined)
+        assert.equal(data.connectionString, undefined)
+      } finally {
+        config.NODE_ENV = originalEnv
+        inquiryRepository.setIsDbConnected(originalConnected)
+      }
+    })
+
+    test('15.3 GET /api/health/ready in production when PostgreSQL is healthy: returns 200 OK without credential leakage', async () => {
+      const originalEnv = config.NODE_ENV
+      const originalConnected = inquiryRepository.isDbConnected()
+      const originalPool = inquiryRepository.getPgPool()
+
+      const mockPool = {
+        options: { connectionString: 'postgresql://neondb_user:secret_pwd@db.neon.tech:5432/neondb' },
+        query: async (q) => {
+          if (q.includes('SELECT 1')) return { rows: [{ '?column?': 1 }] }
+          return { rows: [] }
+        },
+      }
+
+      try {
+        config.NODE_ENV = 'production'
+        inquiryRepository.setPgPool(mockPool)
+        inquiryRepository.setIsDbConnected(true)
+
+        const res = await fetch(`${baseUrl}/api/health/ready`)
+        assert.equal(res.status, 200)
+
+        const data = await res.json()
+        assert.equal(data.status, 'ready')
+        assert.equal(data.storage, 'postgresql')
+        assert.equal(data.environment, 'production')
+
+        // CRITICAL DEFENSIVE SECURITY ASSERTIONS:
+        // Do not expose database passwords, connection strings, internal network details, database hostnames or sensitive diagnostics
+        assert.equal(data.host, undefined)
+        assert.equal(data.databaseHost, undefined)
+        assert.equal(data.password, undefined)
+        assert.equal(data.connectionString, undefined)
+        assert.equal(data.diagnostics, undefined)
+        const bodyText = JSON.stringify(data)
+        assert.ok(!bodyText.includes('secret_pwd'), 'Response body must not contain database passwords')
+        assert.ok(!bodyText.includes('db.neon.tech'), 'Response body must not expose internal hostnames')
+      } finally {
+        config.NODE_ENV = originalEnv
+        inquiryRepository.setIsDbConnected(originalConnected)
+        inquiryRepository.setPgPool(originalPool)
+      }
+    })
+
+    test('15.4 GET /api/health/ready in production when PostgreSQL is unavailable: returns HTTP 503', async () => {
+      const originalEnv = config.NODE_ENV
+      const originalConnected = inquiryRepository.isDbConnected()
+      const originalPool = inquiryRepository.getPgPool()
+
+      try {
+        config.NODE_ENV = 'production'
+        inquiryRepository.setIsDbConnected(false)
+        inquiryRepository.setPgPool(null)
+
+        const res = await fetch(`${baseUrl}/api/health/ready`)
+        assert.equal(res.status, 503)
+
+        const data = await res.json()
+        assert.equal(data.status, 'not_ready')
+        assert.equal(data.storage, 'unavailable')
+        assert.equal(data.environment, 'production')
+        assert.ok(data.error.includes('Primary database storage is unavailable'))
+
+        // Security assertions: Never expose hostnames or internal stacks
+        assert.equal(data.host, undefined)
+        assert.equal(data.stack, undefined)
+        assert.equal(data.connectionString, undefined)
+      } finally {
+        config.NODE_ENV = originalEnv
+        inquiryRepository.setIsDbConnected(originalConnected)
+        inquiryRepository.setPgPool(originalPool)
+      }
+    })
+
+    test('15.5 GET /api/health/ready in production when storage query throws: returns HTTP 503', async () => {
+      const originalEnv = config.NODE_ENV
+      const originalConnected = inquiryRepository.isDbConnected()
+      const originalPool = inquiryRepository.getPgPool()
+
+      const failingPool = {
+        options: { connectionString: 'postgresql://neondb_user:secret_pwd@db.neon.tech:5432/neondb' },
+        query: async () => {
+          throw new Error('SIMULATED_PG_CONNECTION_DROP_ETIMEDOUT')
+        },
+      }
+
+      try {
+        config.NODE_ENV = 'production'
+        inquiryRepository.setPgPool(failingPool)
+        inquiryRepository.setIsDbConnected(true)
+
+        const res = await fetch(`${baseUrl}/api/health/ready`)
+        assert.equal(res.status, 503)
+
+        const data = await res.json()
+        assert.equal(data.status, 'not_ready')
+        assert.equal(data.storage, 'unavailable')
+        assert.equal(data.environment, 'production')
+      } finally {
+        config.NODE_ENV = originalEnv
+        inquiryRepository.setIsDbConnected(originalConnected)
+        inquiryRepository.setPgPool(originalPool)
+      }
+    })
+  })
 })

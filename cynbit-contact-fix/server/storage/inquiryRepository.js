@@ -522,6 +522,48 @@ export const inquiryRepository = {
   },
 
   /**
+   * Check whether the storage layer is ready to accept and persist inquiries.
+   * In production, requires verified PostgreSQL connectivity.
+   * In development/test, allows clearly identified local development store.
+   * Never leaks passwords, internal network details, or hostnames.
+   */
+  async checkReadiness() {
+    const isProduction = config.NODE_ENV === 'production'
+
+    if (pgPool && isDbConnected) {
+      try {
+        if (typeof pgPool.query === 'function') {
+          await pgPool.query('SELECT 1;')
+          return {
+            ready: true,
+            storage: 'postgresql',
+            environment: config.NODE_ENV,
+          }
+        }
+      } catch (err) {
+        isDbConnected = false
+        connectionError = err.message
+      }
+    }
+
+    if (isProduction) {
+      return {
+        ready: false,
+        storage: 'unavailable',
+        environment: config.NODE_ENV,
+        error: 'Primary database storage is unavailable.',
+      }
+    }
+
+    // Development & test modes allow local JSON storage
+    return {
+      ready: true,
+      storage: 'local-development',
+      environment: config.NODE_ENV,
+    }
+  },
+
+  /**
    * Cleanly close database connections (for graceful shutdown and test teardown).
    */
   async close() {

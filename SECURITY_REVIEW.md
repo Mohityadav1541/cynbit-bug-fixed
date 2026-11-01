@@ -229,6 +229,26 @@ This comprehensive security audit evaluated 15 core architectural domains across
 
 ---
 
+### Finding 17: Inadequate Health Endpoint Discrimination (Liveness vs. Readiness) & Metadata Exposure (RESOLVED)
+- **Category:** Availability, Infrastructure Security & Information Disclosure
+- **Severity:** Medium
+- **Vulnerability Identified:** The previous `/api/health` endpoint returned HTTP 200 indicating "healthy" without actively verifying that PostgreSQL was ready to accept and persist new inquiries. If used as a Kubernetes readiness probe, traffic would continue routing to instances unable to persist customer submissions. Conversely, if a health endpoint runs heavy database queries for liveness, transient database hiccups could trigger unnecessary container restarts. Furthermore, health endpoints risk leaking internal infrastructure details (hostnames, IP addresses, database versions) to unauthorized external scanners.
+- **Remediation Implemented:**
+  1. **Split Liveness & Readiness Probes:**
+     - `GET /api/health/live`: Fast, lightweight check verifying that the Node.js/Express process event loop is active. Incurs zero database I/O, preventing spurious restarts during temporary database blips.
+     - `GET /api/health/ready`: Actively verifies the configured storage connection (`SELECT 1;`). In production, strictly requires verified PostgreSQL connectivity. Returns **HTTP 503** if PostgreSQL is unavailable. In development, permits clearly identified local fallback mode.
+  2. **Defensive Metadata Sanitization:**
+     - The readiness response strictly **never** exposes database passwords, connection strings, internal network details, database hostnames (e.g. AWS/Neon private endpoints), or sensitive internal diagnostics.
+     - Response is minimal and sanitized: `{ status: "ready" | "not_ready", storage: "postgresql" | "local-development" | "unavailable", environment: "...", timestamp: "..." }`.
+- **Verification:** Automated tests in `test/backendApi.test.js` (Tests #15.1–#15.5) verify:
+  - `GET /api/health/live` returns lightweight 200 OK without storage latency or database metadata.
+  - `GET /api/health/ready` returns 200 OK in development with local storage identification.
+  - `GET /api/health/ready` in production returns 200 OK when PostgreSQL is healthy, with zero password, hostname, or connection string exposure.
+  - `GET /api/health/ready` in production returns HTTP 503 when PostgreSQL is disconnected or queries fail.
+- **Remaining Risk:** None. Ingress controllers and orchestrators can cleanly separate restart policies from traffic routing policies.
+
+---
+
 ## 3. Production Deployment Security Configuration
 
 When deploying this application to cloud platforms, the following platform-specific defensive header configurations must be applied:
