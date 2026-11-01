@@ -65,7 +65,29 @@ export function errorHandler(err, req, res, _next) {
     })
   }
 
-  // 5. Log internal error securely on server side
+  // 5. Handle Database Unavailability / Service Unavailable (HTTP 503)
+  if (
+    err.statusCode === 503 ||
+    err.errorType === 'DATABASE_UNAVAILABLE' ||
+    err.errorType === 'DATABASE_WRITE_FAILED' ||
+    err.errorType === 'SERVICE_UNAVAILABLE'
+  ) {
+    console.error('[Cynbit Storage Service Unavailable]:', {
+      timestamp: new Date().toISOString(),
+      errorType: err.errorType || 'SERVICE_UNAVAILABLE',
+      message: err.message,
+    })
+
+    return res.status(503).json({
+      success: false,
+      statusCode: 503,
+      errorType: 'SERVICE_UNAVAILABLE',
+      error:
+        'The Cynbit inquiry storage service is temporarily unavailable. Please retry in a few moments or contact opportunities@cynbit.in.',
+    })
+  }
+
+  // 6. Log internal error securely on server side
   console.error('[Cynbit Server Error]:', {
     timestamp: new Date().toISOString(),
     method: req.method,

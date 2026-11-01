@@ -9,10 +9,11 @@ const DATA_DIR = path.resolve(__dirname, '../data')
 const DATA_FILE = path.resolve(DATA_DIR, 'inquiries.json')
 
 export const LOCAL_STORE_LIMITATIONS = {
-  mode: 'LOCAL_DEVELOPMENT_FALLBACK',
+  mode: 'LOCAL_DEVELOPMENT_STORE',
   disclaimer:
-    'LOCAL DEVELOPMENT FALLBACK STORE ACTIVE: DATABASE_URL is not set. Inquiries are stored in local file storage (server/data/inquiries.json).',
+    'LOCAL DEVELOPMENT STORE ACTIVE: Allowed only in development/test environments. Inquiries are stored in local file storage (server/data/inquiries.json). In production, this fallback is strictly disabled to prevent silent data loss.',
   limitations: [
+    'Environment guardrail: Allowed exclusively when NODE_ENV is "development" or "test". Strictly blocked in production.',
     'Single-node storage: Does not support multi-instance horizontal scaling or distributed cloud replicas.',
     'Ephemeral in containerized environments: Data will be reset if the container or ephemeral disk is destroyed.',
     'No transactional guarantees: Lacks ACID transactions, foreign key constraints, and WAL replication.',

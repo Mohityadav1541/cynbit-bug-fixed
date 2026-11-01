@@ -27,5 +27,7 @@ export const config = {
   RATE_LIMIT_WINDOW_MS: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000', 10), // 15 minutes
   RATE_LIMIT_MAX_REQUESTS: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '5', 10), // 5 requests per window
   TRUST_PROXY: parseTrustProxy(process.env.TRUST_PROXY ?? false),
-  STORAGE_MODE: process.env.DATABASE_URL ? 'postgresql' : 'local-fallback',
+  STORAGE_MODE: process.env.DATABASE_URL
+    ? 'postgresql'
+    : (process.env.NODE_ENV === 'production' ? 'postgresql-required' : 'local-development'),
 }

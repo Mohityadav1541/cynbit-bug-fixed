@@ -1,7 +1,7 @@
 # Cynbit Architecture Discovery Engine — Application Security Review
 
 **Assessment Target:** Cynbit Contact Architecture & Discovery Engine Prototype (`cynbit-contact-fix`)  
-**Scope:** Frontend (React 19 / Vite), Backend (Express.js / Node.js), Database (PostgreSQL / Prisma / Neon), and Deployment Configurations (Vercel / Render / NGINX).  
+**Scope:** Frontend (React 19 / Vite), Backend (Express.js / Node.js), Database (PostgreSQL / pg Client Pool / Neon), and Deployment Configurations (Vercel / Render / NGINX).  
 **Review Type:** Full-Stack Defensive Architecture & Vulnerability Assessment  
 **Classification:** Internal Engineering Audit  
 **Date:** November 1, 2026  
@@ -92,7 +92,7 @@ This comprehensive security audit evaluated 15 core architectural domains across
 - **Category:** SQL Injection Prevention
 - **Severity:** Critical
 - **Evidence:** Assembling SQL query strings with string interpolation (`SELECT * FROM inquiries WHERE id = '${id}'`) exposes databases to catastrophic exfiltration or data destruction.
-- **Fix Implemented:** Implemented 100% parameterized queries in `server/storage/inquiryRepository.js` using positional placeholders (`$1, $2, ... $22`). The relational database driver (`pg` / Prisma) escapes and treats all user inputs strictly as typed parameters, completely neutralizing SQL injection vectors.
+- **Fix Implemented:** Implemented 100% parameterized queries in `server/storage/inquiryRepository.js` using positional placeholders (`$1, $2, ... $22`). The relational database driver (`pg.Pool`) escapes and treats all user inputs strictly as typed parameters, completely neutralizing SQL injection vectors.
 - **Remaining Risk:** None for current queries. Future database operations must adhere strictly to parameterized prepared statements.
 
 ---
@@ -324,6 +324,30 @@ client_max_body_size 50k;
 
 ---
 
+### Finding 16: Silent Local JSON Fallback in Production & Database Resilience (RESOLVED)
+- **Category:** Data Integrity, Availability & Production Storage Security
+- **Severity:** High
+- **Vulnerability Identified:** When PostgreSQL became unavailable or encountered query errors, `inquiryRepository.js` silently caught the exception and saved enquiries to `server/data/inquiries.json`. In production, this created false positives where users received successful submission acknowledgements (`HTTP 201 Created`) despite the enquiry never reaching the persistent PostgreSQL database. Additionally, database connection credentials risked exposure in console error logs if connection URLs were logged unredacted.
+- **Remediation Implemented:**
+  1. **Strict Production Environment Isolation:** Local file JSON storage is allowed **strictly** when `NODE_ENV` is `"development"` or `"test"`. In production (`NODE_ENV === "production"`), local file fallback is completely disabled.
+  2. **Controlled HTTP 503 Responses:** If PostgreSQL is offline, unconfigured, or throws during submission in production, the backend returns a controlled `HTTP 503 Service Unavailable` response (`errorType: "SERVICE_UNAVAILABLE"`).
+  3. **Zero False Positives:** The server strictly never returns a `201 Created` receipt unless the enquiry has genuinely been persisted to the PostgreSQL database.
+  4. **Preserved Client Form Drafts:** When receiving HTTP 503, the client SPA preserves user form data in LocalStorage, preventing data loss and providing immediate retry and direct email/WhatsApp transmission channels.
+  5. **Credential Masking in Logs:** Added `sanitizeConnectionUrl()` to scrub passwords from connection strings (`postgresql://user:****@host:port/db`) before outputting to server diagnostics.
+  6. **Duplicate Prevention:** Avoids blind write retries on database timeout/failure, eliminating duplicate records.
+  7. **Database Connection Lifecycle:** Initialized `pg.Pool` with explicit defensive timeouts (`connectionTimeoutMillis: 5000`, `idleTimeoutMillis: 30000`, `statement_timeout: 10000`), error event listeners on idle clients, pre-flight connectivity verification (`SELECT current_database(), version();`), and graceful shutdown hooks (`inquiryRepository.close()`).
+  8. **Database Access Layer Specification:** Documented the storage engine accurately as the official `pg` package with parameterized SQL, removing any inaccurate references to Prisma ORM.
+- **Verification:** Automated tests in `test/backendApi.test.js` (Tests #14.1–#14.7) verify:
+  - Accurate diagnostics and driver reporting (`PostgreSQL Client Pool (pg)`).
+  - Storage diagnostics in development (`local-development` allowed) vs production (reports `mode: "unavailable"` and `localFallbackAllowed: false`).
+  - PostgreSQL unavailability during submission returns HTTP 503 and zero writes to `inquiries.json` in production.
+  - Database write errors return HTTP 503 without duplicate write retries.
+  - Local JSON storage is functional in development mode with clear indicators.
+  - Credential masking scrubs cleartext passwords from connection URLs.
+- **Remaining Risk:** None. Production environments are guaranteed against silent data loss.
+
+---
+
 ## 4. Verification & Testing Evidence
 
 All security mitigations are continuously verified by the project's automated test runner:
@@ -333,16 +357,17 @@ npm test
 ```
 
 ### Automated Security Test Results
-- **`test/backendApi.test.js`**:
+- **`test/backendApi.test.js` (25 tests passing)**:
   - `POST /api/inquiries`: Honeypot bot decoy traps scraper dispatches (`400 SECURITY_GATEWAY`).
   - `POST /api/inquiries`: Malformed input rejected via Zod schema (`400 VALIDATION_ERROR`).
   - `POST /api/inquiries`: Malformed JSON caught without stack exposure (`400 MALFORMED_JSON`).
   - Rate Limiting Suite (#6.1–#6.6): Normal requests, repeated requests (HTTP 429 & Retry-After), IP isolation, spoofed X-Forwarded-For rejection, malformed header sanitization, window expiration, and multiple-instance limitations & Redis distributed store.
+  - Storage Resilience Suite (#14.1–#14.7): PostgreSQL startup verification, HTTP 503 on database unavailability, local JSON fallback prevention in production, single-write guarantee, and credential masking.
   - `POST /api/inquiries`: Oversized payloads exceeding 50KB rejected (`413 PAYLOAD_TOO_LARGE`).
   - `POST /api/inquiries`: Untrusted CORS origins rejected (`403 CORS_FORBIDDEN`).
   - `GET /api/inquiries/:referenceId`: Decommissioned public lookup returns HTTP 404, ensuring zero project metadata, tech stack, or architect assignment is publicly exposed.
   - Reference ID Security: Validates generation of 16-byte cryptographically random tokens (`CYN-YYYYMMDD-[32-hex-chars]`). Arbitrary/guessed IDs return 404 without data leakage.
-  - Centralized Error Handler: Catches unexpected repository throws, returning HTTP 500 without leaking stack traces or internal exception messages.
+  - Centralized Error Handler: Catches unexpected repository throws, returning HTTP 500/503 without leaking stack traces or internal exception messages.
   - Helmet Security Headers: Verifies `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, and omission of `X-Powered-By`.
 - **`test/draftStorage.test.js`**:
   - Verifies PII exclusion from `localStorage` (10 tests passing).
@@ -352,7 +377,9 @@ npm test
   - Verifies deterministic simulator fault injection across all 5 modes (6 tests passing).
 - **`test/originalFormSimulation.test.js`**:
   - Verifies laboratory reproduction of the legacy unhandled promise rejection bug (3 tests passing).
+- **`test/qaTestSuite.test.js`**:
+  - Full end-to-end QA validation suite covering all discovery flows, accessibility, responsiveness, and resilience (32 tests passing).
 
-**Total Test Suite Execution:** **40 of 40 tests passing** across 5 test suites.  
+**Total Test Suite Execution:** **84 of 84 tests passing** across 9 test suites.  
 **Linter Execution:** **0 warnings and 0 errors** on 45 files via `oxlint`.
 

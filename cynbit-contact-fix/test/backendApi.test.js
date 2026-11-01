@@ -10,7 +10,8 @@ import {
   RedisRateLimitStore,
 } from '../server/middleware/rateLimiter.js'
 import { localDevStore } from '../server/storage/localStore.js'
-import { inquiryRepository } from '../server/storage/inquiryRepository.js'
+import { inquiryRepository, sanitizeConnectionUrl } from '../server/storage/inquiryRepository.js'
+import { config } from '../server/config.js'
 
 describe('Cynbit Backend Express API Integration Tests', () => {
   let server
@@ -61,7 +62,7 @@ describe('Cynbit Backend Express API Integration Tests', () => {
     assert.equal(data.service, 'Cynbit Architecture Discovery API')
     assert.ok(typeof data.uptimeSeconds === 'number')
     assert.ok(data.storage)
-    assert.ok(['local-fallback', 'postgresql'].includes(data.storage.mode))
+    assert.ok(['local-fallback', 'local-development', 'postgresql'].includes(data.storage.mode))
     assert.equal(data.storage.connected, true)
   })
 
@@ -83,7 +84,7 @@ describe('Cynbit Backend Express API Integration Tests', () => {
     assert.match(data.referenceId, /^CYN-\d{8}-[A-F0-9]{32}$/)
     assert.equal(data.assignedArchitect, 'Lead AI & LLM Systems Architect')
     assert.equal(data.slaResponseHours, 24)
-    assert.ok(['local-fallback', 'postgresql'].includes(data.storageMode))
+    assert.ok(['local-fallback', 'local-development', 'postgresql'].includes(data.storageMode))
 
     // Verify it is stored and retrievable
     const stored = localDevStore.findByReferenceId(data.referenceId)
@@ -525,5 +526,223 @@ describe('Cynbit Backend Express API Integration Tests', () => {
     assert.equal(data.statusCode, 403)
     assert.equal(data.errorType, 'CORS_FORBIDDEN')
     assert.ok(data.error.includes('CORS'))
+  })
+
+  /* ==========================================================================
+     SECTION 14: ENTERPRISE DATABASE RESILIENCE & PRODUCTION GUARDRAILS
+     ========================================================================== */
+  describe('14. Enterprise Database Storage Resilience & Production Guardrails', () => {
+    test('14.1 PostgreSQL connected: reports accurate diagnostics with pg Client Pool', () => {
+      const originalConnected = inquiryRepository.isDbConnected()
+      const originalPool = inquiryRepository.getPgPool()
+      const originalEnv = config.NODE_ENV
+
+      try {
+        const mockPool = { options: { connectionString: 'postgresql://user:pass@ep-bitter-smoke.us-east-2.aws.neon.tech:5432/neondb' } }
+        inquiryRepository.setPgPool(mockPool)
+        inquiryRepository.setIsDbConnected(true)
+
+        config.NODE_ENV = 'production'
+        const prodDiag = inquiryRepository.getStorageDiagnostics()
+        assert.equal(prodDiag.mode, 'postgresql')
+        assert.equal(prodDiag.driver, 'PostgreSQL Client Pool (pg)')
+        assert.equal(prodDiag.connected, true)
+        assert.equal(prodDiag.localFallbackAllowed, false)
+
+        config.NODE_ENV = 'development'
+        const devDiag = inquiryRepository.getStorageDiagnostics()
+        assert.equal(devDiag.mode, 'postgresql')
+        assert.equal(devDiag.connected, true)
+        assert.equal(devDiag.localFallbackAllowed, true)
+      } finally {
+        inquiryRepository.setIsDbConnected(originalConnected)
+        inquiryRepository.setPgPool(originalPool)
+        config.NODE_ENV = originalEnv
+      }
+    })
+
+    test('14.2 PostgreSQL unavailable during startup: reports local-development in dev and offline in production', () => {
+      const originalConnected = inquiryRepository.isDbConnected()
+      const originalEnv = config.NODE_ENV
+
+      try {
+        // Disconnected state
+        inquiryRepository.setIsDbConnected(false)
+
+        // Development mode: clearly indicates local JSON storage is active
+        config.NODE_ENV = 'development'
+        const devDiag = inquiryRepository.getStorageDiagnostics()
+        assert.equal(devDiag.mode, 'local-development')
+        assert.equal(devDiag.driver, 'LocalDevelopmentStore (JSON File)')
+        assert.equal(devDiag.localFallbackAllowed, true)
+        assert.ok(devDiag.disclaimer.includes('LOCAL DEVELOPMENT STORE ACTIVE'))
+
+        // Production mode: never claims local storage is active; marks service offline
+        config.NODE_ENV = 'production'
+        const prodDiag = inquiryRepository.getStorageDiagnostics()
+        assert.equal(prodDiag.mode, 'unavailable')
+        assert.equal(prodDiag.connected, false)
+        assert.equal(prodDiag.localFallbackAllowed, false)
+        assert.ok(prodDiag.error.includes('unavailable'))
+      } finally {
+        inquiryRepository.setIsDbConnected(originalConnected)
+        config.NODE_ENV = originalEnv
+      }
+    })
+
+    test('14.3 PostgreSQL unavailable during inquiry submission: returns HTTP 503 and NEVER saves to local store in production', async () => {
+      resetRateLimits()
+      const originalConnected = inquiryRepository.isDbConnected()
+      const originalEnv = config.NODE_ENV
+
+      try {
+        // Set production mode and simulate database connection loss
+        config.NODE_ENV = 'production'
+        inquiryRepository.setIsDbConnected(false)
+
+        const initialLocalCount = localDevStore.list().length
+
+        const res = await fetch(`${baseUrl}/api/inquiries`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(validPayload),
+        })
+
+        // Must return controlled HTTP 503 Service Unavailable
+        assert.equal(res.status, 503)
+        const data = await res.json()
+        assert.equal(data.success, false)
+        assert.equal(data.statusCode, 503)
+        assert.equal(data.errorType, 'SERVICE_UNAVAILABLE')
+        assert.ok(data.error.includes('temporarily unavailable'))
+        // Stack trace and credentials must NEVER be exposed
+        assert.equal(data.stack, undefined)
+
+        // GUARANTEE: In production, never silently switch to local JSON file
+        const finalLocalCount = localDevStore.list().length
+        assert.equal(finalLocalCount, initialLocalCount, 'Local JSON store must not receive submissions in production!')
+      } finally {
+        inquiryRepository.setIsDbConnected(originalConnected)
+        config.NODE_ENV = originalEnv
+      }
+    })
+
+    test('14.4 Database query failure in production: returns HTTP 503 without blind retry duplicates', async () => {
+      resetRateLimits()
+      const originalConnected = inquiryRepository.isDbConnected()
+      const originalEnv = config.NODE_ENV
+      const originalPool = inquiryRepository.getPgPool()
+
+      let queryCallCount = 0
+
+      // Mock pool that throws on query execution
+      const mockPool = {
+        options: { connectionString: config.DATABASE_URL },
+        query: async () => {
+          queryCallCount++
+          const err = new Error('SIMULATED_PG_TRANSACTION_LOCK_TIMEOUT')
+          err.code = '55P03'
+          throw err
+        },
+      }
+
+      try {
+        config.NODE_ENV = 'production'
+        inquiryRepository.setIsDbConnected(true)
+        inquiryRepository.setPgPool(mockPool)
+
+        const initialLocalCount = localDevStore.list().length
+
+        const res = await fetch(`${baseUrl}/api/inquiries`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(validPayload),
+        })
+
+        assert.equal(res.status, 503)
+        const data = await res.json()
+        assert.equal(data.success, false)
+        assert.equal(data.statusCode, 503)
+        assert.equal(data.errorType, 'SERVICE_UNAVAILABLE')
+
+        // Verify only 1 query attempt was made — no blind duplicate retries
+        assert.equal(queryCallCount, 1, 'Repository must avoid retrying database writes that could create duplicate records')
+
+        // Verify no fallback to local file in production
+        assert.equal(localDevStore.list().length, initialLocalCount)
+      } finally {
+        inquiryRepository.setIsDbConnected(originalConnected)
+        inquiryRepository.setPgPool(originalPool)
+        config.NODE_ENV = originalEnv
+      }
+    })
+
+    test('14.5 Local fallback in development: persists inquiry with local-development indicator', async () => {
+      resetRateLimits()
+      const originalConnected = inquiryRepository.isDbConnected()
+      const originalEnv = config.NODE_ENV
+
+      try {
+        config.NODE_ENV = 'development'
+        inquiryRepository.setIsDbConnected(false) // Force local store fallback in dev
+
+        const res = await fetch(`${baseUrl}/api/inquiries`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(validPayload),
+        })
+
+        assert.equal(res.status, 201)
+        const data = await res.json()
+        assert.equal(data.success, true)
+        assert.equal(data.statusCode, 201)
+        assert.equal(data.storageMode, 'local-development')
+        assert.ok(data.referenceId)
+
+        // Verify it was stored in the development store
+        const record = localDevStore.findByReferenceId(data.referenceId)
+        assert.ok(record)
+        assert.equal(record.email, validPayload.email)
+      } finally {
+        inquiryRepository.setIsDbConnected(originalConnected)
+        config.NODE_ENV = originalEnv
+      }
+    })
+
+    test('14.6 Local fallback disabled in production: findByReferenceId does not query local store in production', async () => {
+      const originalEnv = config.NODE_ENV
+      const originalConnected = inquiryRepository.isDbConnected()
+
+      try {
+        config.NODE_ENV = 'production'
+        inquiryRepository.setIsDbConnected(false)
+
+        // Add a mock item into localStore
+        const localItem = localDevStore.save({
+          referenceId: 'CYN-TEST-PROD-GUARD',
+          fullName: 'Test User',
+          email: 'test@example.com',
+        })
+
+        // Searching in production when DB is disconnected must return null, NOT the local store record
+        const found = await inquiryRepository.findByReferenceId(localItem.referenceId)
+        assert.equal(found, null, 'Production mode must never read from local development store')
+      } finally {
+        inquiryRepository.setIsDbConnected(originalConnected)
+        config.NODE_ENV = originalEnv
+      }
+    })
+
+    test('14.7 Safe Error Logging: sanitizes database connection URLs and masks passwords', () => {
+      const rawUrl = 'postgresql://admin_user:SuperSecretPassword123@ep-bitter-smoke.us-east-2.aws.neon.tech:5432/neondb?sslmode=require'
+      const sanitized = sanitizeConnectionUrl(rawUrl)
+
+      assert.ok(!sanitized.includes('SuperSecretPassword123'), 'Sanitized URL must NEVER contain the cleartext password')
+      assert.ok(sanitized.includes('admin_user:****@ep-bitter-smoke.us-east-2.aws.neon.tech:5432/neondb'))
+
+      // Handles null and malformed URLs gracefully
+      assert.equal(sanitizeConnectionUrl(null), 'none')
+      assert.equal(sanitizeConnectionUrl('not-a-valid-url'), '[REDACTED_INVALID_URL]')
+    })
   })
 })

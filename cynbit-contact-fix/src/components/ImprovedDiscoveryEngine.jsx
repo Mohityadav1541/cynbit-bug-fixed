@@ -469,6 +469,8 @@ export default function ImprovedDiscoveryEngine({ simulationMode }) {
           userMessage = 'HTTP 400 (Bad Request): The inquiry parameters were rejected by the validation server.'
         } else if (response.statusCode === 429) {
           userMessage = 'HTTP 429 (Rate Limited): Too many inquiries received from this network. Cooldown is active.'
+        } else if (response.statusCode === 503) {
+          userMessage = 'HTTP 503 (Service Unavailable): The database is temporarily unavailable. Your inquiry data has been preserved; please retry in a moment or use direct WhatsApp/Email dispatch.'
         } else if (response.statusCode === 500) {
           userMessage = 'HTTP 500 (Internal Server Error): The Cynbit dispatch gateway encountered an internal server exception.'
         }
@@ -637,9 +639,9 @@ export default function ImprovedDiscoveryEngine({ simulationMode }) {
                   <span className="text-on-surface-variant">Storage Engine:</span>
                   {submitResult.storageMode === 'postgresql' ? (
                     <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-700 border border-emerald-500/30">
-                      PostgreSQL Database (Prisma)
+                      PostgreSQL Database (pg Client Pool)
                     </span>
-                  ) : submitResult.storageMode === 'local-fallback' ? (
+                  ) : submitResult.storageMode === 'local-development' || submitResult.storageMode === 'local-fallback' ? (
                     <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-blue-500/10 text-blue-700 border border-blue-500/30">
                       Local Development Store (JSON)
                     </span>
@@ -652,7 +654,7 @@ export default function ImprovedDiscoveryEngine({ simulationMode }) {
               </div>
 
               {/* Persistence Disclaimers & Limitations Notice */}
-              {submitResult.storageMode === 'local-fallback' && (
+              {(submitResult.storageMode === 'local-development' || submitResult.storageMode === 'local-fallback') && (
                 <div className="w-full max-w-md p-3.5 rounded-2xl bg-surface-container-low border border-outline-variant/20 text-[11px] text-on-surface-variant text-left leading-relaxed space-y-1">
                   <div className="font-bold text-on-surface flex items-center gap-1.5">
                     <span className="w-2 h-2 rounded-full bg-blue-500" />

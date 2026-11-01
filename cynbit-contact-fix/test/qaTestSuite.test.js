@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import http from 'node:http'
 import { app } from '../server/app.js'
 import { inquiryRateLimiter } from '../server/middleware/rateLimiter.js'
+import { inquiryRepository } from '../server/storage/inquiryRepository.js'
 import {
   validateEmail,
   validateForm,
@@ -61,6 +62,7 @@ describe('=== COMPREHENSIVE QA TEST SUITE: CYNBIT DISCOVERY ENGINE ===', () => {
 
   after(async () => {
     await new Promise((resolve) => server.close(resolve))
+    await inquiryRepository.close()
   })
 
   /* ==========================================================================
