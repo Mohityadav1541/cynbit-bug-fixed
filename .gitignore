@@ -1,33 +1,50 @@
 # Node dependencies
 node_modules/
 node_modules
+**/node_modules/
 
 # Production build artifacts
 dist/
 dist
 build/
 build
+**/dist/
 
 # Environment variables & secrets
 .env
 .env.*
 !.env.example
+**/.env
+**/.env.*
+!**/.env.example
 
 # Logs & debugging
+logs/
 *.log
+**/*.log
 
 # Test coverage
 coverage/
 coverage
+**/coverage/
 
 # Deployment & frameworks
 .vercel/
 .vercel
+**/.vercel/
 
 # Local database & development data
 server/data/*.json
+**/server/data/*.json
 *.sqlite
 *.sqlite3
 
 # Operating System & IDE artifacts
 .DS_Store
+**/.DS_Store
+.vscode/
+**/.vscode/
+!.vscode/extensions.json
+.idea/
+**/.idea/
+Thumbs.db

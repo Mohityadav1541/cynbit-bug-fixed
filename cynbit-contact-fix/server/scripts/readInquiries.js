@@ -8,8 +8,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const localJsonPath = path.resolve(__dirname, '../data/inquiries.json')
 
 async function readFromPostgres() {
+  const normalizedUrl = (config.DATABASE_URL || '').replace('sslmode=require', 'sslmode=verify-full')
   const pool = new pg.Pool({
-    connectionString: config.DATABASE_URL,
+    connectionString: normalizedUrl,
     connectionTimeoutMillis: 5000,
     ssl: { rejectUnauthorized: false },
   })

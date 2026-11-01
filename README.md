@@ -143,7 +143,7 @@ The **Cynbit Architecture Discovery Engine** addresses every layer of the inquir
 - **Security:** Helmet 8.3, CORS 2.8
 - **Validation:** Zod 4.6
 - **Database Access:** `pg` (Node-PostgreSQL `pg.Pool`) with parameterized SQL queries (`$1, $2, ...`)
-- **Schema Reference:** Optional Prisma schema (`prisma/schema.prisma`) for declarative data modeling
+- **Schema Definition:** Canonical PostgreSQL DDL (`inquiries` table with constraints and indexes)
 - **Database:** PostgreSQL on Neon Cloud (with automated Local JSON fallback store for dev/test)
 
 ---

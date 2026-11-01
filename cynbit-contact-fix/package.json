@@ -14,7 +14,6 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@prisma/client": "^7.10.1",
     "@upstash/redis": "^1.40.0",
     "canvas-confetti": "^1.9.4",
     "cors": "^2.8.6",
@@ -33,7 +32,6 @@
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
     "oxlint": "^1.89.0",
-    "prisma": "^8.0.0-rc.29",
     "tailwindcss": "^4.3.3",
     "vite": "^8.3.5"
   }

@@ -28,8 +28,13 @@ export function sanitizeConnectionUrl(rawUrl) {
 export function createPgPool(databaseUrl = config.DATABASE_URL) {
   if (!databaseUrl) return null
 
+  // Normalize legacy sslmode=require to modern sslmode=verify-full to eliminate pg deprecation warnings
+  const normalizedUrl = typeof databaseUrl === 'string'
+    ? databaseUrl.replace('sslmode=require', 'sslmode=verify-full')
+    : databaseUrl
+
   const poolConfig = {
-    connectionString: databaseUrl,
+    connectionString: normalizedUrl,
     max: 10,
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 5000,

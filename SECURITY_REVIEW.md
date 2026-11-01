@@ -208,7 +208,7 @@ This comprehensive security audit evaluated 15 core architectural domains across
 - **Category:** Supply Chain & Third-Party Dependencies
 - **Severity:** Medium
 - **Evidence:** High package counts in `node_modules` increase exposure to known CVEs and malicious transitive dependency updates.
-- **Fix Implemented:** Audited dependencies. The application utilizes a lightweight dependency footprint (`express`, `zod`, `pg`, `cors`, `helmet`, `dotenv`; `prisma` is provided as an optional schema definition tool in devDependencies while runtime persistence uses `pg.Pool`).
+- **Fix Implemented:** Audited dependencies. The application utilizes a lightweight dependency footprint (`express`, `zod`, `pg`, `cors`, `helmet`, `dotenv`, `@upstash/redis`), with unnecessary ORM/CLI tools (like Prisma) fully removed in favor of native, parameterized `pg.Pool` SQL queries.
 - **Remaining Risk:** Standard Node.js ecosystem vulnerability monitoring required. Continuous CI scanning with `npm audit` is recommended.
 
 ---
