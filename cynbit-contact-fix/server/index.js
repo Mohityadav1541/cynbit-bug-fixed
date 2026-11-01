@@ -4,9 +4,11 @@ import { inquiryRepository } from './storage/inquiryRepository.js'
 
 // Initialize & verify database pool connection on server startup
 if (config.DATABASE_URL) {
-  inquiryRepository.initialize().catch((err) => {
+  try {
+    await inquiryRepository.initialize()
+  } catch (err) {
     console.warn('[Server Startup Warning]: Database connection verification yielded:', err.message)
-  })
+  }
 }
 
 const server = app.listen(config.PORT, () => {

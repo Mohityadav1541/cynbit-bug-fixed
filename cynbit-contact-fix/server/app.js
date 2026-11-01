@@ -48,8 +48,13 @@ app.use(
 )
 
 // 2. Strict CORS Configuration
+const configuredOrigins = (config.CORS_ORIGIN || '')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean)
+
 const allowedOrigins = [
-  config.CORS_ORIGIN,
+  ...configuredOrigins,
   'http://localhost:5173',
   'http://127.0.0.1:5173',
   'http://localhost:3000',
@@ -62,7 +67,14 @@ app.use(
       // Allow requests with no origin (e.g. mobile native apps, curl, server-to-server)
       if (!origin) return callback(null, true)
 
-      const isAllowedConfigOrigin = allowedOrigins.includes(origin)
+      // Allow wildcard if explicitly configured
+      if (config.CORS_ORIGIN === '*') return callback(null, true)
+
+      const isAllowedConfigOrigin =
+        allowedOrigins.includes(origin) ||
+        // Support Vercel deployment preview domains if a vercel domain is configured
+        (configuredOrigins.some((co) => co.includes('.vercel.app')) && origin.endsWith('.vercel.app'))
+
       const isLocalhostDev =
         config.NODE_ENV !== 'production' &&
         (origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:'))
