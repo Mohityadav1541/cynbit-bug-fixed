@@ -14,7 +14,7 @@ export const inquiriesRouter = express.Router()
  * NOTE: Reference IDs serve solely as client receipt and acknowledgement identifiers.
  * They are NEVER treated as authorization credentials or authentication tokens.
  */
-function generateReferenceId() {
+export function generateReferenceId() {
   const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '')
   const randomHex = crypto.randomBytes(16).toString('hex').toUpperCase()
   return `CYN-${dateStr}-${randomHex}`

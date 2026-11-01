@@ -5,17 +5,18 @@
 **Target System:** Cynbit Technologies Discovery Engine (`cynbit-contact-fix`)  
 **Backend:** Node.js Express 5.3, PostgreSQL (Neon Cloud) / Local JSON Fallback  
 **Frontend:** React 19, Tailwind CSS 4, Vite 8  
-**Total Automated Tests Executed:** 101  
-**Total Passed:** 101  
+**Total Automated Tests Executed:** 116  
+**Total Passed:** 116  
 **Total Failed:** 0  
-**Linter Status (oxlint):** 0 errors, 0 warnings across 46 files  
+**Total Skipped:** 0  
+**Linter Status (oxlint):** 0 errors, 0 warnings across 49 files  
 **Production Build Status:** Passed (`dist` generated successfully)  
 
 ---
 
 ## Executive Summary
 
-As a QA engineer, a full-scope functional, asynchronous, security, accessibility, persistence, and responsiveness audit was performed across the Cynbit Architecture Discovery Engine prototype. All 101 test specifications across 8 distinct suites were executed directly against the application runtime, Express REST server, and PostgreSQL storage adapter. Zero regressions were detected.
+As a QA engineer, a full-scope functional, asynchronous, security, accessibility, persistence, and responsiveness audit was performed across the Cynbit Architecture Discovery Engine prototype. All 116 test specifications across 12 distinct suites were executed directly against the application runtime, Express REST server, and PostgreSQL storage adapter. Zero regressions were detected.
 
 ---
 
@@ -109,33 +110,57 @@ As a QA engineer, a full-scope functional, asynchronous, security, accessibility
 
 ---
 
-## 7. Automated Test Suite Summary
+## 7. Architectural & Security Regression Suite
+
+| Regression Test Case | Expected Behavior | Actual Verification Result | Status |
+| :--- | :--- | :--- | :--- |
+| **REG-01: Public Reference Lookup 404** | `GET /api/inquiries/:ref` returns HTTP 404; public metadata lookup blocked. | Responds with HTTP 404 `NOT_FOUND` and zero data leakage. | **PASS** |
+| **REG-02: Cryptographic Reference IDs** | Reference IDs use ≥ 16 bytes (128 bits) entropy formatted as `CYN-YYYYMMDD-[32-HEX]`. | 100 generated reference IDs verified strictly unique and entropy-compliant. | **PASS** |
+| **REG-03: Spoofed Header Rejection** | `X-Forwarded-For` and `CF-Connecting-IP` ignored when trust proxy is false. | Client evaluated strictly to socket address `127.0.0.1`. | **PASS** |
+| **REG-04: Trust Proxy Parsing** | Parses boolean, integer hops, subnets, and `loopback` accurately. | All variants verified against Express configuration rules. | **PASS** |
+| **REG-05: Local JSON Block in Production** | `NODE_ENV=production` prohibits local fallback when PostgreSQL is offline. | Storage operation throws error; local JSON store count remains unchanged. | **PASS** |
+| **REG-06: Production PostgreSQL 503** | Returns HTTP 503 `SERVICE_UNAVAILABLE` when primary database is down. | Responded with HTTP 503 and structured error payload. | **PASS** |
+| **REG-07: Health Liveness Independence** | `GET /api/health/live` executes without database I/O. | Responded with HTTP 200, uptime, and timestamp in < 2ms. | **PASS** |
+| **REG-08: Health Readiness Storage Check** | `GET /api/health/ready` actively validates storage health without leaking secrets. | Responded with HTTP 200 and storage mode; zero passwords or connection strings leaked. | **PASS** |
+| **REG-09: Zero Customer PII Exposure** | Public intake responses never return IP, user-agent, customer phone, or email. | Response strictly returns receipt acknowledgement metadata. | **PASS** |
+| **REG-10: PII-Free Draft Storage** | Form draft persistence extracts strictly scoping fields (`extractScopingFields`). | Personal contact identifiers are excluded from storage. | **PASS** |
+| **REG-11: Reviewer Controls Hidden** | Normal customer mode hides simulator bar and bug inspector tools. | `isReviewerModeActive()` evaluates to `false` for standard visitors. | **PASS** |
+| **REG-12: Reviewer Mode Activation** | `?reviewer=1` or `setReviewerMode(true)` activates reviewer tools. | Flag properly activates and persists state. | **PASS** |
+| **REG-13: Simulated vs Real Differentiation**| Mock submissions explicitly tag `storageMode: 'simulated-mock'`. | Mock submission never falsely claims PostgreSQL persistence. | **PASS** |
+| **REG-14: API Timeout Cleanup** | Client timeout via `AbortController` clears timer in `finally` block. | Aborted requests safely handled without unhandled rejections. | **PASS** |
+| **REG-15: Async Recovery Preservation** | Network drops, HTTP 500, and HTTP 429 correctly preserve form inputs and reset loading. | All simulation modes return standardized error contracts with preserved draft state. | **PASS** |
+
+---
+
+## 8. Automated Test Suite Summary
 
 ```
 ✔ test/antiSpam.test.js (8 tests)
-✔ test/backendApi.test.js (22 tests)
+✔ test/apiClientAndSanitization.test.js (3 tests)
+✔ test/backendApi.test.js (35 tests)
 ✔ test/draftStorage.test.js (10 tests)
 ✔ test/originalFormSimulation.test.js (3 tests)
-✔ test/privacyMetadata.test.js (8 tests)
 ✔ test/qaTestSuite.test.js (32 tests)
-✔ test/rateLimiter.test.js (12 tests)
+✔ test/regressionSuite.test.js (15 tests)
+✔ test/reviewerMode.test.js (4 tests)
 ✔ test/simulatorModes.test.js (6 tests)
 
-ℹ tests 101
-ℹ suites 8
-ℹ pass 101
+ℹ tests 116
+ℹ suites 12
+ℹ pass 116
 ℹ fail 0
 ℹ cancelled 0
 ℹ skipped 0
+ℹ todo 0
 ```
 
 ---
 
-## 8. Remaining Considerations & Production Deployment Notes
+## 9. Remaining Considerations & Production Deployment Notes
 
 1. **Production PostgreSQL Cluster:** The Express backend connects to PostgreSQL using parameterized SQL via `pg.Pool`. For high-availability multi-region production, maintain the pooler connection string and ensure `sslmode=verify-full` is used in newer libpq drivers.
 2. **Third-Party Email Relay:** If Cynbit configures Resend or AWS SES for real-time architect email dispatches in production, ensure the SMTP credentials reside strictly in server-side environment variables and are never bundled into client Vite builds.
 3. **Draft Privacy:** Draft persistence strictly isolates scoping metadata and never persists client PII, passwords, or tokens to LocalStorage.
 
-**Conclusion:** The Cynbit Architecture Discovery Engine has completed rigorous automated QA testing, with all 101 automated test cases passing across functional, security, accessibility, persistence, and error handling suites.
+**Conclusion:** The Cynbit Architecture Discovery Engine has completed rigorous automated QA regression testing, with all 116 automated test cases passing across functional, security, accessibility, persistence, and error handling suites.
 
